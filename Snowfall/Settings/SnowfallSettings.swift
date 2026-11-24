@@ -36,7 +36,8 @@ struct SnowfallSettings: Codable, Equatable, Sendable {
     var launchAtLogin = false
     var showDiagnostics = false
     var showSurfaceDebug = false
-    var plowAutomatic = true
+    var helper = HelperKind.jcb          // which snow helper runs
+    var plowAutomatic = true             // run the helper automatically
     var plowIntervalMinutes = 3         // 1...60
     /// UUIDs of displays where snowfall is turned off.
     var disabledDisplays: [String] = []
@@ -67,6 +68,7 @@ struct SnowfallSettings: Codable, Equatable, Sendable {
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? d.launchAtLogin
         showDiagnostics = try c.decodeIfPresent(Bool.self, forKey: .showDiagnostics) ?? d.showDiagnostics
         showSurfaceDebug = try c.decodeIfPresent(Bool.self, forKey: .showSurfaceDebug) ?? d.showSurfaceDebug
+        helper = (try? c.decodeIfPresent(HelperKind.self, forKey: .helper)) ?? d.helper
         plowAutomatic = try c.decodeIfPresent(Bool.self, forKey: .plowAutomatic) ?? d.plowAutomatic
         plowIntervalMinutes = try c.decodeIfPresent(Int.self, forKey: .plowIntervalMinutes) ?? d.plowIntervalMinutes
         disabledDisplays = try c.decodeIfPresent([String].self, forKey: .disabledDisplays) ?? d.disabledDisplays

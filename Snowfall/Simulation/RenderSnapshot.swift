@@ -32,6 +32,13 @@ struct RenderVehicle: Sendable {
     var bob: Float
 }
 
+struct RenderSanta: Sendable {
+    var x: Float          // sprite centre x
+    var y: Float          // sprite bottom y
+    var bob: Float
+    var wandAngle: Float  // radians; 0 = pointing left, negative = raised
+}
+
 struct SimulationStats: Sendable, Equatable {
     var particleCount = 0
     var surfaceCount = 0
@@ -51,5 +58,6 @@ struct RenderSnapshot: Sendable {
     var heights: [Float] = []
     var debugRects: [DebugRect] = []
     var vehicles: [RenderVehicle] = []
+    var santas: [RenderSanta] = []
     var stats = SimulationStats()
 }

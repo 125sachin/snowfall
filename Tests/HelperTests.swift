@@ -1,0 +1,214 @@
+import XCTest
+import simd
+@testable import Snowfall
+
+final class HelperTests: XCTestCase {
+    private func world(width: CGFloat = 1600, snow: Float = 10, windowSnow: Float = 0, helper: HelperKind = .santa) -> (PhysicsWorld, SurfaceState, SurfaceState?) {
+        var c = SimulationConfiguration(); c.density = 0; c.plowAuto = false; c.helper = helper
+        let w = PhysicsWorld(config: c)
+        w.setRegion(CGRect(x: 0, y: 0, width: width, height: 900))
+        var surfaces = [CollisionSurface(id: "floor", frame: CGRect(x: 0, y: 0, width: width, height: 0), velocity: .zero, kind: .displayBottom)]
+        if windowSnow > 0 {
+            surfaces.append(CollisionSurface(id: "win", frame: CGRect(x: 300, y: 200, width: 500, height: 300), velocity: .zero, kind: .windowTop, zRank: 0))
+        }
+        w.setSurfaces(surfaces)
+        let floor = w.state(forSurface: "floor")!
+        for i in 0..<floor.field.binCount { floor.field.add(volume: snow * floor.field.binWidth, toBin: i) }
+        var win: SurfaceState?
+        if windowSnow > 0 {
+            win = w.state(forSurface: "win")!
+            for i in 0..<win!.field.binCount { win!.field.add(volume: windowSnow * win!.field.binWidth, toBin: i) }
+        }
+        return (w, floor, win)
+    }
+
+    @discardableResult
+    private func runHelper(_ w: PhysicsWorld, maxSeconds: Float = 90) -> Float {
+        var t: Float = 0
+        while w.isHelperRunning && t < maxSeconds { w.step(dt: 1.0 / 120); w.finishFrame(); t += 1.0 / 120 }
+        return t
+    }
+
+    func testSantaEntersFromTheRightAndHovers() {
+        let (w, _, _) = world()
+        w.startHelper(.santa)
+        XCTAssertNotNil(w.santa)
+        XCTAssertGreaterThan(w.santa!.x, 1600)
+        for _ in 0..<(120 * 3) { w.step(dt: 1.0 / 120) }
+        XCTAssertLessThan(w.santa!.x, 1600)
+        XCTAssertNotEqual(w.santa!.phase, .arriving)
+    }
+
+    func testWandFlourishRaisesAndSwings() {
+        let (w, _, _) = world()
+        w.startHelper(.santa)
+        var minA: Float = 9, maxA: Float = -9
+        for _ in 0..<(120 * 8) {
+            w.step(dt: 1.0 / 120)
+            if let a = w.santa?.wandAngle { minA = min(minA, a); maxA = max(maxA, a) }
+        }
+        XCTAssertGreaterThan(maxA - minA, 0.8, "wand must visibly swing")
+    }
+
+    func testTornadoAppearsAndTravelsRightToLeft() {
+        let (w, _, _) = world()
+        w.startHelper(.santa)
+        var firstX: Float?
+        var lastX: Float?
+        for _ in 0..<(120 * 14) {
+            w.step(dt: 1.0 / 120)
+            if let t = w.tornado { if firstX == nil { firstX = t.x }; lastX = t.x }
+        }
+        XCTAssertNotNil(firstX)
+        XCTAssertLessThan(lastX ?? 9999, firstX ?? 0, "tornado travels right to left")
+    }
+
+    func testTornadoClearsFloorAndWindowTops() {
+        let (w, floor, win) = world(snow: 10, windowSnow: 8)
+        w.startHelper(.santa)
+        runHelper(w)
+        XCTAssertFalse(w.isHelperRunning)
+        for _ in 0..<(120 * 10) { w.step(dt: 1.0 / 120) }
+        XCTAssertLessThan(floor.field.volume / 1600, 1.0, "floor cleared")
+        XCTAssertLessThan(win!.field.volume / 500, 1.0, "window top cleared")
+    }
+
+    func testSnowVolumeIsAccountedFor() {
+        let (w, floor, win) = world(snow: 10, windowSnow: 8)
+        let initial = floor.field.volume + win!.field.volume
+        w.startHelper(.santa)
+        runHelper(w)
+        for _ in 0..<(120 * 15) { w.step(dt: 1.0 / 120); w.finishFrame() }
+        let remaining = floor.field.volume + win!.field.volume
+        let accounted = remaining + w.totals.lostVolume + w.totals.clippedVolume + w.totals.droppedVolume
+        XCTAssertEqual(accounted, initial, accuracy: initial * 0.03)
+    }
+
+    func testSwirlParticlesStayBoundedAndFinite() {
+        let (w, _, _) = world(snow: 30, windowSnow: 20)
+        w.startHelper(.santa)
+        var maxCount = 0
+        var t: Float = 0
+        while w.isHelperRunning && t < 90 {
+            w.step(dt: 1.0 / 120); w.finishFrame(); t += 1.0 / 120
+            maxCount = max(maxCount, w.pool.count)
+            XCTAssertLessThanOrEqual(w.pool.count, w.pool.capacity)
+        }
+        XCTAssertGreaterThan(maxCount, 50, "funnel should be visible")
+        for i in 0..<w.pool.count {
+            XCTAssertTrue(w.pool[i].position.x.isFinite && w.pool[i].position.y.isFinite)
+        }
+    }
+
+    func testSwirlingParticlesFormAFunnel() {
+        let (w, _, _) = world(snow: 10)
+        w.startHelper(.santa)
+        for _ in 0..<(120 * 9) { w.step(dt: 1.0 / 120) }
+        guard let t = w.tornado else { return XCTFail("no tornado") }
+        var lowSpread: Float = 0, highSpread: Float = 0, lowN: Float = 0, highN: Float = 0
+        for i in 0..<w.pool.count where w.pool[i].state == .swirling {
+            let h = w.pool[i].position.y - t.baseY
+            let dx = abs(w.pool[i].position.x - t.x)
+            if h < t.height * 0.3 { lowSpread += dx; lowN += 1 } else if h > t.height * 0.6 { highSpread += dx; highN += 1 }
+        }
+        XCTAssertGreaterThan(lowN, 3); XCTAssertGreaterThan(highN, 3)
+        XCTAssertGreaterThan(highSpread / highN, lowSpread / lowN, "funnel widens with height")
+    }
+
+    func testSparklesAreShortLived() {
+        let (w, _, _) = world()
+        w.startHelper(.santa)
+        for _ in 0..<(120 * 5) { w.step(dt: 1.0 / 120) }
+        let sparkles = (0..<w.pool.count).filter { w.pool[$0].state == .sparkle }.count
+        XCTAssertGreaterThan(sparkles, 0)
+        XCTAssertLessThan(sparkles, 200)
+    }
+
+    func testSantaLeavesAndHelperFinishes() {
+        let (w, _, _) = world()
+        w.startHelper(.santa)
+        let t = runHelper(w)
+        XCTAssertLessThan(t, 90)
+        XCTAssertNil(w.santa); XCTAssertNil(w.tornado)
+    }
+
+    func testOnlyOneHelperAtATime() {
+        let (w, _, _) = world()
+        w.startHelper(.jcb)
+        w.startHelper(.santa)
+        XCTAssertNotNil(w.plow)
+        XCTAssertNil(w.santa)
+    }
+
+    func testConfiguredHelperIsUsedAndRandomPicksAConcreteOne() {
+        let (w1, _, _) = world(helper: .jcb)
+        w1.startHelper()
+        XCTAssertNotNil(w1.plow)
+        let (w2, _, _) = world(helper: .santa)
+        w2.startHelper()
+        XCTAssertNotNil(w2.santa)
+        let (w3, _, _) = world(helper: .random)
+        w3.startHelper()
+        XCTAssertTrue(w3.plow != nil || w3.santa != nil)
+    }
+
+    func testAutoRunUsesChosenHelperAndNeedsSnow() {
+        var c = SimulationConfiguration(); c.density = 0; c.plowAuto = true; c.plowInterval = 5; c.helper = .santa
+        let w = PhysicsWorld(config: c)
+        w.setRegion(CGRect(x: 0, y: 0, width: 1000, height: 800))
+        w.setSurfaces([CollisionSurface(id: "floor", frame: CGRect(x: 0, y: 0, width: 1000, height: 0), velocity: .zero, kind: .displayBottom)])
+        for _ in 0..<(120 * 8) { w.step(dt: 1.0 / 120); w.finishFrame() }
+        XCTAssertFalse(w.isHelperRunning, "no snow → no helper")
+        let st = w.state(forSurface: "floor")!
+        for i in 0..<st.field.binCount { st.field.add(volume: 10 * st.field.binWidth, toBin: i) }
+        w.finishFrame()
+        XCTAssertNotNil(w.santa)
+        XCTAssertNil(w.plow)
+    }
+
+    func testEligibilityDependsOnWhereTheSnowIs() {
+        var c = SimulationConfiguration(); c.density = 0
+        let w = PhysicsWorld(config: c)
+        w.setRegion(CGRect(x: 0, y: 0, width: 1000, height: 800))
+        w.setSurfaces([CollisionSurface(id: "floor", frame: CGRect(x: 0, y: 0, width: 1000, height: 0), velocity: .zero, kind: .displayBottom),
+                       CollisionSurface(id: "win", frame: CGRect(x: 100, y: 100, width: 400, height: 300), velocity: .zero, kind: .windowTop, zRank: 0)])
+        let win = w.state(forSurface: "win")!
+        for i in 0..<win.field.binCount { win.field.add(volume: 10 * win.field.binWidth, toBin: i) }
+        XCTAssertEqual(w.eligibleHelpers(), [.santa], "only window snow: the JCB has nothing to plow")
+    }
+
+    func testRenderSnapshotContainsSanta() {
+        let (w, _, _) = world()
+        w.startHelper(.santa)
+        for _ in 0..<(120 * 2) { w.step(dt: 1.0 / 120) }
+        var snap = RenderSnapshot()
+        w.fill(snapshot: &snap, showSurfaces: false, stats: SimulationStats())
+        XCTAssertEqual(snap.santas.count, 1)
+        XCTAssertTrue(snap.vehicles.isEmpty)
+    }
+
+    func testWandTipFollowsAngle() {
+        var s = SantaRun(x: 500, y: 300, start: .zero, hover: .zero)
+        s.wandAngle = 0
+        XCTAssertLessThan(s.tipWorld.x, s.handWorld.x, "tip points left")
+        XCTAssertEqual(s.tipWorld.y, s.handWorld.y, accuracy: 0.001)
+        s.wandAngle = -.pi / 2
+        XCTAssertGreaterThan(s.tipWorld.y, s.handWorld.y, "negative angle raises the wand")
+    }
+
+    func testHelperSettingDefaultsAndToleratesUnknownValues() throws {
+        XCTAssertEqual(SnowfallSettings.default.helper, .jcb)
+        let json = #"{"version":2,"helper":"unicorn","particleDensity":0.7}"#
+        let s = try JSONDecoder().decode(SnowfallSettings.self, from: Data(json.utf8))
+        XCTAssertEqual(s.helper, .jcb)
+        XCTAssertEqual(s.particleDensity, 0.7)
+        let ok = try JSONDecoder().decode(SnowfallSettings.self, from: Data(#"{"helper":"santa"}"#.utf8))
+        XCTAssertEqual(ok.helper, .santa)
+    }
+
+    func testEveryConcreteHelperHasLabelsAndIsRegistered() {
+        for k in HelperKind.concrete { XCTAssertFalse(k.label.isEmpty); XCTAssertFalse(k.summary.isEmpty) }
+        XCTAssertTrue(HelperKind.allCases.contains(.random))
+        XCTAssertFalse(HelperKind.concrete.contains(.random))
+    }
+}

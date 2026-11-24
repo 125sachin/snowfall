@@ -7,6 +7,8 @@ enum ParticleState: UInt8, Sendable {
     case falling
     case disturbed   // recently pushed by the pointer
     case displaced   // snow shed from a moving/closing window or an overflowing edge
+    case swirling    // caught in a tornado (kinematic orbit, see SantaHelper)
+    case sparkle     // short-lived magic glitter, no gravity
 }
 
 struct SnowParticle: Sendable {
@@ -22,6 +24,10 @@ struct SnowParticle: Sendable {
     var volume: Float
     var stateTime: Float
     var state: ParticleState
+    // Tornado orbit parameters (unused for other states).
+    var orbitPhase: Float = 0
+    var orbitRadius: Float = 1
+    var baseRadius: Float = 1
 
     static let blank = SnowParticle(position: .zero, velocity: .zero, radius: 1, rotation: 0,
                                     angularVelocity: 0, opacity: 1, mass: 1, volume: 0,
@@ -113,7 +119,7 @@ struct SimulationConfiguration: Sendable, Equatable {
     var minRadius: Float = 2.0
     var maxRadius: Float = 5.6
     /// Extra pool slots reserved for displaced clusters and edge overflow.
-    var spawnReserve = 256
+    var spawnReserve = 900
 
     var restitution: Float = 0.05
     var friction: Float = 0.6
@@ -129,6 +135,15 @@ struct SimulationConfiguration: Sendable, Equatable {
     /// Window speed (pt/s) below which snow is fully carried along.
     var windowStickSpeed: Float = 350
     var maxDisplacementClusters = 24
+
+    // Snow helpers.
+    var helper: HelperKind = .jcb
+    var tornadoSpeed: Float = 140
+    var tornadoOmega: Float = 5.5
+    var tornadoCoreRadius: Float = 10
+    var tornadoSlope: Float = 0.30
+    var tornadoEmitRate: Float = 170
+    var tornadoClusterVolume: Float = 70
 
     // Snow plow (JCB). Units: pt, s. Terminal speed unloaded = engine / drag = 90 pt/s.
     var plowAuto = true

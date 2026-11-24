@@ -42,12 +42,15 @@ struct SettingsView: View {
             Toggle("Accumulate snow", isOn: $store.settings.accumulationEnabled)
             LabeledSlider(title: "Maximum depth", value: $store.settings.maxAccumulationDepth, lowLabel: "Shallow", highLabel: "Deep")
                 .disabled(!store.settings.accumulationEnabled)
-            Section("Snow plow") {
-                Toggle("Automatic JCB plow", isOn: $store.settings.plowAutomatic)
-                Stepper("Run every \(store.settings.plowIntervalMinutes) min", value: $store.settings.plowIntervalMinutes, in: 1...60)
+            Section("Snow helper") {
+                Picker("Helper", selection: $store.settings.helper) {
+                    ForEach(HelperKind.allCases) { Text($0.label).tag($0) }
+                }
+                Toggle("Run automatically", isOn: $store.settings.plowAutomatic)
+                Stepper("Every \(store.settings.plowIntervalMinutes) min", value: $store.settings.plowIntervalMinutes, in: 1...60)
                     .disabled(!store.settings.plowAutomatic)
-                Button("Send Plow Now") { coordinator.sendPlow() }
-                Text("A JCB drives right to left along the bottom of the screen, pushing settled snow ahead of its blade. It slows under a heavy load, spills what doesn't fit, and dumps the rest off the edge. It only runs when there is snow to clear.")
+                Button("Send \(store.settings.helper.shortLabel) Now") { coordinator.sendHelper() }
+                Text(store.settings.helper.summary + " Helpers only run when there is snow to clear.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }

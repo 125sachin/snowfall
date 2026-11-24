@@ -17,6 +17,7 @@ struct SimulationSettings: Sendable, Equatable {
     var displacementStrength: Double = 0.5
     var lowPower = false
     var showSurfaces = false
+    var helper: HelperKind = .jcb
     var plowAuto = true
     var plowIntervalSeconds: Double = 180
 
@@ -33,6 +34,7 @@ struct SimulationSettings: Sendable, Equatable {
         c.displayMaxDepth = Float(10 + maxDepth * 50)
         c.windowMaxDepth = Float(6 + maxDepth * 20)
         c.windowPhysicsEnabled = windowPhysics
+        c.helper = helper
         c.plowAuto = plowAuto
         c.plowInterval = Float(plowIntervalSeconds)
         c.windowStickSpeed = Float(700 - displacementStrength * 550)

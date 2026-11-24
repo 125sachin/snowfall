@@ -77,8 +77,8 @@ final class SimulationCoordinator: @unchecked Sendable {
         }
     }
 
-    /// Sends the snow plow across the floor (no-op if it is already running).
-    func sendPlow() { queue.async { [self] in world.startPlow() } }
+    /// Runs a snow helper now (nil = the configured one). No-op if a helper is already running.
+    func sendHelper(_ kind: HelperKind? = nil) { queue.async { [self] in world.startHelper(kind) } }
 
     func clearSnow() { queue.async { [self] in world.clearSnow(); publish() } }
 

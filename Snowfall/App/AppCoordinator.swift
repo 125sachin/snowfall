@@ -81,7 +81,11 @@ final class AppCoordinator {
         let after = UserDefaults.standard.double(forKey: "plowAfterSeconds")
         if after > 0 {
             DispatchQueue.main.asyncAfter(deadline: .now() + after) { [weak self] in
-                MainActor.assumeIsolated { self?.sendPlow() }
+                MainActor.assumeIsolated {
+                    // `-helperKind santa` forces a helper for testing.
+                    let raw = UserDefaults.standard.string(forKey: "helperKind")
+                    self?.sendHelper(raw.flatMap(HelperKind.init(rawValue:)))
+                }
             }
         }
         overlays.onOcclusionLost = { SnowfallLogger.overlay.info("overlay occlusion lost; re-asserting") }
@@ -102,7 +106,7 @@ final class AppCoordinator {
 
     func togglePause() { isPaused.toggle(); applyAll() }
 
-    func sendPlow() { simulation.sendPlow() }
+    func sendHelper(_ kind: HelperKind? = nil) { simulation.sendHelper(kind) }
 
     func clearSnow() {
         simulation.clearSnow()
@@ -160,7 +164,7 @@ final class AppCoordinator {
             maxDepth: s.maxAccumulationDepth, pointerEnabled: s.pointerInteractionEnabled,
             pointerRadius: s.pointerRadius, pointerStrength: s.pointerStrength, windowPhysics: windowPhysics,
             displacementStrength: s.windowDisplacementStrength, lowPower: lowPower, showSurfaces: s.showSurfaceDebug,
-            plowAuto: s.plowAutomatic, plowIntervalSeconds: Double(s.plowIntervalMinutes) * 60)
+            helper: s.helper, plowAuto: s.plowAutomatic, plowIntervalSeconds: Double(s.plowIntervalMinutes) * 60)
         simulation.updateDisplays(enabled)
         simulation.apply(settings: ss, targetFPS: Double(fps))
 

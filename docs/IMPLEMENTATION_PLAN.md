@@ -43,5 +43,15 @@ is blocked across the blade so snow cannot slump through it; a pile too deep ahe
 pile is dumped (counted as lost volume). Runs automatically every N minutes (default 3) when the floor holds snow, or on demand
 (menu "Send Plow", Settings → Snow). Dev flag: `--args -plowAfterSeconds 30`.
 
+## Snow helpers (pluggable)
+`HelperKind` (jcb, santa, random) is chosen in the menu or Settings → Snow → Snow helper; it runs on demand or automatically every N
+minutes when it has snow to clear (the JCB needs floor snow, Santa accepts any surface). Only one helper runs at a time.
+**Santa:** flies in from the upper right, flourishes a wand (glitter particles at the tip), conjures a tornado at the right edge that
+sweeps right → left across the whole width. The funnel is a cone of orbiting particles (kinematic, phase/radius per particle, near
+side brighter/larger). Every surface whose top edge lies inside the funnel (floor and window tops) is swept under the funnel's catch
+zone; lifted snow becomes swirling clusters that rise, then are flung off at the top (their volume is counted as lost). Santa follows
+behind, then flies off.
+**Adding a helper:** see the checklist on `HelperKind`.
+
 ## Known limitations
 Bundle ID is the placeholder `com.xcode.snowfall`; signing is ad-hoc (`-`) until the user supplies an identity.

@@ -28,7 +28,7 @@ private struct SurfaceUniforms {
 /// guarantees the CPU never rewrites a set the GPU is still reading. Nothing is allocated per frame.
 @MainActor
 final class MetalRenderer: NSObject, MTKViewDelegate {
-    static let maxParticles = 4096
+    static let maxParticles = 6144
     static let maxHeights = 64 * 1024
     static let maxDebug = 256
 
@@ -40,6 +40,8 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
     private let spritePipeline: MTLRenderPipelineState
     private let bodyTexture: MTLTexture?
     private let wheelTexture: MTLTexture?
+    private let santaTexture: MTLTexture?
+    private let wandTexture: MTLTexture?
     private let inFlight = DispatchSemaphore(value: 2)
     private var ring = 0
     private var particleBuffers: [MTLBuffer] = []
@@ -90,6 +92,8 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         spritePipeline = try pipeline(lib, "sprite_vertex", "sprite_fragment")
         let tex = VehicleSprites.makeTextures(device: device)
         bodyTexture = tex?.body; wheelTexture = tex?.wheel
+        let santa = SantaSprites.makeTextures(device: device)
+        santaTexture = santa?.body; wandTexture = santa?.wand
 
         func buf(_ bytes: Int) throws -> MTLBuffer {
             guard let b = device.makeBuffer(length: bytes, options: .storageModeShared) else {
@@ -179,6 +183,9 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
             if let body = bodyTexture, let wheel = wheelTexture {
                 for v in snap.vehicles { drawVehicle(v, body: body, wheel: wheel, encoder: enc, uniforms: &u, frame: f) }
             }
+            if let body = santaTexture, let wand = wandTexture {
+                for sa in snap.santas { drawSanta(sa, body: body, wand: wand, encoder: enc, uniforms: &u, frame: f) }
+            }
             if pc > 0 {
                 enc.setRenderPipelineState(particlePipeline)
                 enc.setVertexBuffer(pBuf, offset: 0, index: 0)
@@ -196,6 +203,30 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         cmd.present(drawable)
         cmd.commit()
         monitor.recordRenderFrame(cpuMs: (CACurrentMediaTimeShim.now() - start) * 1000)
+    }
+
+    private func drawSprite(_ tex: MTLTexture, encoder enc: MTLRenderCommandEncoder, uniforms u: inout ViewUniforms,
+                            cx: Float, cy: Float, w: Float, h: Float, rot: Float) {
+        var s = SpriteUniforms(center: SIMD2(cx, cy), size: SIMD2(w, h), rotation: rot)
+        enc.setVertexBytes(&s, length: MemoryLayout<SpriteUniforms>.stride, index: 0)
+        enc.setVertexBytes(&u, length: MemoryLayout<ViewUniforms>.stride, index: 1)
+        enc.setFragmentTexture(tex, index: 0)
+        enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+    }
+
+    private func drawSanta(_ s: RenderSanta, body: MTLTexture, wand: MTLTexture,
+                           encoder enc: MTLRenderCommandEncoder, uniforms u: inout ViewUniforms, frame f: CGRect) {
+        let k = SantaMetrics.scale
+        let w = SantaMetrics.width * k, h = SantaMetrics.height * k
+        guard s.x + w > Float(f.minX), s.x - w < Float(f.maxX), s.y + h > Float(f.minY), s.y < Float(f.maxY) else { return }
+        let left = s.x - w / 2, bottom = s.y + s.bob
+        enc.setRenderPipelineState(spritePipeline)
+        drawSprite(body, encoder: enc, uniforms: &u, cx: left + w / 2, cy: bottom + h / 2, w: w, h: h, rot: 0)
+        let hand = SIMD2(left + SantaMetrics.hand.x * k, bottom + SantaMetrics.hand.y * k)
+        let dir = SIMD2(-cos(s.wandAngle), -sin(s.wandAngle))
+        let c = hand + dir * (SantaMetrics.wandPivotToCenter * k)
+        drawSprite(wand, encoder: enc, uniforms: &u, cx: c.x, cy: c.y,
+                   w: SantaMetrics.wandSize.x * k, h: SantaMetrics.wandSize.y * k, rot: s.wandAngle)
     }
 
     private func drawVehicle(_ v: RenderVehicle, body: MTLTexture, wheel: MTLTexture,

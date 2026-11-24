@@ -41,16 +41,18 @@ final class PhysicsWorld {
     private(set) var time: Double = 0
     var pointer = PointerState()
     private(set) var region = CGRect.zero
-    private(set) var totals = WorldTotals()
+    var totals = WorldTotals()
 
-    private var rng: SeededRNG
+    var rng: SeededRNG
     private var forceField: ForceField
     private var spawnAccumulator: Float = 0
     private var states: [String: SurfaceState] = [:]
-    private var ordered: [SurfaceState] = []
+    var ordered: [SurfaceState] = []
     private var index = SurfaceIndex()
     private(set) var plow: PlowVehicle?
-    private var lastPlowEnd: Double = 0
+    var santa: SantaRun?
+    var tornado: Tornado?
+    var lastHelperEnd: Double = 0
     private var plowBlockedState: SurfaceState?
     private var plowBlockedEdge: Int?
 
@@ -133,7 +135,7 @@ final class PhysicsWorld {
         }
     }
 
-    private func emit(_ clusters: [DisplacedCluster]) {
+    func emit(_ clusters: [DisplacedCluster]) {
         for c in clusters {
             let radius = min(max(sqrt(c.volume / (Float.pi * config.compaction)) * 0.6, 2), 12)
             let p = SnowParticle(position: c.position, velocity: c.velocity, radius: radius, rotation: 0,
@@ -144,6 +146,7 @@ final class PhysicsWorld {
     }
 
     var isPlowRunning: Bool { plow != nil }
+    var isHelperRunning: Bool { plow != nil || santa != nil || tornado != nil }
 
     func clearSnow() {
         for s in ordered { s.field.clear() }
@@ -165,6 +168,11 @@ final class PhysicsWorld {
         var i = 0
         while i < pool.count {
             var p = ptr[i]
+            if p.state == .swirling || p.state == .sparkle {
+                let keep = p.state == .swirling ? stepSwirl(&p, dt: dt) : stepSparkle(&p, dt: dt)
+                if keep { ptr[i] = p; i += 1 } else { pool.remove(at: i) }
+                continue
+            }
             var a = g
             if pointer.isActive {
                 let pa = ForceField.pointerAcceleration(particle: p.position, pointer: pointer)
@@ -194,6 +202,8 @@ final class PhysicsWorld {
             i += 1
         }
         stepPlow(dt: dt)
+        stepSanta(dt: dt)
+        stepTornado(dt: dt)
     }
 
     /// Returns true when the particle came to rest (and should be removed).
@@ -283,16 +293,40 @@ final class PhysicsWorld {
 
     // MARK: Snow plow
 
-    private func floorState(at x: Float) -> SurfaceState? {
+    func floorState(at x: Float) -> SurfaceState? {
         for st in ordered where st.surface.kind == .displayBottom && x >= st.surface.minX && x <= st.surface.maxX {
             return st
         }
         return nil
     }
 
+    private func volume(_ kind: HelperKind) -> Float {
+        switch kind {
+        case .jcb: return ordered.filter { $0.surface.kind == .displayBottom }.reduce(0) { max($0, $1.field.volume) }
+        default: return ordered.reduce(0) { max($0, $1.field.volume) }
+        }
+    }
+
+    /// Helpers that currently have enough snow to be worth running.
+    func eligibleHelpers(minVolume: Float = 600) -> [HelperKind] {
+        HelperKind.concrete.filter { volume($0) > minVolume }
+    }
+
+    /// Starts a helper now. `nil` uses the configured one; `.random` picks any concrete helper.
+    func startHelper(_ kind: HelperKind? = nil) {
+        guard !isHelperRunning, !region.isEmpty else { return }
+        var k = kind ?? config.helper
+        if k == .random { k = HelperKind.concrete[Int(rng.next() % UInt64(HelperKind.concrete.count))] }
+        switch k {
+        case .jcb: startPlow()
+        case .santa: startSanta()
+        case .random: break
+        }
+    }
+
     /// Sends the plow in from the right edge. No-op if one is already running.
     func startPlow() {
-        guard plow == nil, !region.isEmpty else { return }
+        guard plow == nil, santa == nil, !region.isEmpty else { return }
         let x = Float(region.maxX) + 20
         let ground = floorState(at: Float(region.maxX) - 1)?.surface.topY ?? Float(region.minY)
         plow = PlowVehicle(bladeX: x, groundY: ground)
@@ -366,7 +400,7 @@ final class PhysicsWorld {
         p.bladeX = newX
         if newX < Float(region.minX) - PlowVehicle.spriteWidth - 20 {
             plow = nil
-            lastPlowEnd = time
+            lastHelperEnd = time
             plowBlockedState = nil; plowBlockedEdge = nil
         } else {
             plow = p
@@ -377,9 +411,13 @@ final class PhysicsWorld {
 
     /// Relaxes fields, clips depth, and sheds a bounded amount at window edges. Call once per frame.
     func finishFrame() {
-        if config.plowAuto, plow == nil, time - lastPlowEnd >= Double(config.plowInterval),
-           ordered.contains(where: { $0.surface.kind == .displayBottom && $0.field.volume > 600 }) {
-            startPlow()
+        if config.plowAuto, !isHelperRunning, time - lastHelperEnd >= Double(config.plowInterval) {
+            let ok = eligibleHelpers()
+            if config.helper == .random, let pick = ok.isEmpty ? nil : ok[Int(rng.next() % UInt64(ok.count))] {
+                startHelper(pick)
+            } else if config.helper != .random, ok.contains(config.helper) {
+                startHelper(config.helper)
+            }
         }
         for s in ordered {
             guard s.dirty else { continue }
@@ -433,6 +471,10 @@ final class PhysicsWorld {
                                               opacity: p.opacity, seed: Float(i & 255) / 255))
         }
         s.vehicles.removeAll(keepingCapacity: true)
+        s.santas.removeAll(keepingCapacity: true)
+        if let sa = santa {
+            s.santas.append(RenderSanta(x: sa.x, y: sa.y, bob: sin(sa.totalTime * 2.2) * 5, wandAngle: sa.wandAngle))
+        }
         if let p = plow {
             s.vehicles.append(RenderVehicle(bladeX: p.bladeX, groundY: p.groundY,
                                             wheelAngle: p.wheelAngle, bob: sin(p.wheelAngle * 3) * 0.5))

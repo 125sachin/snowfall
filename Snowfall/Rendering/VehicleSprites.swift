@@ -17,7 +17,7 @@ enum VehicleSprites {
         return (body, wheel)
     }
 
-    private static func texture(device: MTLDevice, size: CGSize, draw: (CGContext, CGSize) -> Void) -> MTLTexture? {
+    static func texture(device: MTLDevice, size: CGSize, draw: (CGContext, CGSize) -> Void) -> MTLTexture? {
         let w = Int(size.width * pixelScale), h = Int(size.height * pixelScale)
         let cs = CGColorSpace(name: CGColorSpace.sRGB)!
         let info = CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
