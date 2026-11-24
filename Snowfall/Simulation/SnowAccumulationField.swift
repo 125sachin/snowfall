@@ -67,13 +67,14 @@ struct SnowAccumulationField: Sendable, Equatable {
     }
 
     /// One conservative relaxation pass toward the angle of repose. Returns true if anything moved.
+    /// `blockedEdge`: skip the pair (i, i+1) so snow cannot slump through a plow blade at that edge.
     @discardableResult
-    mutating func relax(iterations: Int = 2) -> Bool {
+    mutating func relax(iterations: Int = 2, blockedEdge: Int? = nil) -> Bool {
         var moved = false
         let limit = reposeSlope * binWidth
         for _ in 0..<iterations {
             var any = false
-            for i in 0..<(binCount - 1) {
+            for i in 0..<(binCount - 1) where i != blockedEdge {
                 let d = heights[i] - heights[i + 1]
                 if abs(d) > limit {
                     let m = (abs(d) - limit) * 0.25
@@ -128,6 +129,24 @@ struct SnowAccumulationField: Sendable, Equatable {
         }
         return (left, right)
     }
+
+    /// Removes snow above `keepDepth` from bins whose centres lie between the two local x positions
+    /// (a blade passing over them). Returns the removed volume (pt²).
+    mutating func sweep(fromLocalX a: Float, toLocalX b: Float, keepDepth: Float) -> Float {
+        let lo = min(a, b), hi = max(a, b)
+        guard hi > 0, lo < width else { return 0 }
+        let i0 = max(0, Int(ceil(lo / binWidth - 0.5)))
+        let i1 = min(binCount - 1, Int(floor(hi / binWidth - 0.5)))
+        guard i0 <= i1 else { return 0 }
+        var removed: Float = 0
+        for i in i0...i1 where heights[i] > keepDepth {
+            removed += (heights[i] - keepDepth) * binWidth
+            heights[i] = keepDepth
+        }
+        return removed
+    }
+
+    func binIndex(atLocalX x: Float) -> Int { min(max(Int(x / binWidth), 0), binCount - 1) }
 
     mutating func clear() {
         for i in 0..<binCount { heights[i] = 0 }

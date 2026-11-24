@@ -14,6 +14,23 @@ final class SurfaceState {
 struct WorldTotals: Equatable {
     var clippedVolume: Float = 0
     var droppedVolume: Float = 0
+    /// Volume that left the system: plow dumped off the end of the floor, or despawned in flight.
+    var lostVolume: Float = 0
+}
+
+/// A snow-plow vehicle (JCB) driving right → left along the display floor.
+struct PlowVehicle {
+    static let spriteScale: Float = 0.9
+    static let spriteWidth: Float = 180 * spriteScale
+    static let wheelRadius: Float = 30 * spriteScale
+
+    var bladeX: Float
+    var groundY: Float
+    var speed: Float = 30
+    var carried: Float = 0          // pt² of snow currently pushed ahead of the blade
+    var wheelAngle: Float = 0
+    var sprayAccumulator: Float = 0
+    var pileHeight: Float { min(46, sqrt(max(carried, 0)) * 0.9) }
 }
 
 /// Owns particles, surfaces and height fields. Single-threaded (simulation queue only).
@@ -32,6 +49,10 @@ final class PhysicsWorld {
     private var states: [String: SurfaceState] = [:]
     private var ordered: [SurfaceState] = []
     private var index = SurfaceIndex()
+    private(set) var plow: PlowVehicle?
+    private var lastPlowEnd: Double = 0
+    private var plowBlockedState: SurfaceState?
+    private var plowBlockedEdge: Int?
 
     init(config: SimulationConfiguration = SimulationConfiguration()) {
         self.config = config
@@ -122,6 +143,8 @@ final class PhysicsWorld {
         }
     }
 
+    var isPlowRunning: Bool { plow != nil }
+
     func clearSnow() {
         for s in ordered { s.field.clear() }
     }
@@ -161,6 +184,7 @@ final class PhysicsWorld {
             }
 
             if !(p.position.x.isFinite && p.position.y.isFinite) || isOutside(p.position) {
+                if p.volume.isFinite { totals.lostVolume += p.volume }
                 pool.remove(at: i); continue
             }
             if useSurfaces, collide(&p, prevY: prevY) {
@@ -169,6 +193,7 @@ final class PhysicsWorld {
             ptr[i] = p
             i += 1
         }
+        stepPlow(dt: dt)
     }
 
     /// Returns true when the particle came to rest (and should be removed).
@@ -193,8 +218,18 @@ final class PhysicsWorld {
         guard outcome == .rested else { return false }
         if config.accumulationEnabled {
             let depth = s.field.maxDepth
-            let spread = min(64, max(3, Int(p.volume / max(0.5, depth * s.field.binWidth * 0.5)) + 3))
-            s.field.deposit(localX: x - s.surface.minX, volume: p.volume, spreadBins: spread)
+            let spread = min(64, max(3, Int(p.volume / max(0.5, depth * s.field.binWidth * 0.3)) + 3))
+            var localX = x - s.surface.minX
+            // Snow the blade spilled must stay ahead of it: if it would land within the blade's
+            // reach, it settles just ahead of the blade (it is carried by the pile front).
+            if p.state == .displaced, p.volume > 0, s === plowBlockedState, let edge = plowBlockedEdge {
+                let half = max(1, spread / 2)
+                let c = s.field.binIndex(atLocalX: localX)
+                if c > edge - half && c <= edge + 20 {
+                    localX = (Float(max(edge - half, 0)) + 0.5) * s.field.binWidth
+                }
+            }
+            s.field.deposit(localX: localX, volume: p.volume, spreadBins: spread)
             s.dirty = true
         }
         return true
@@ -246,14 +281,115 @@ final class PhysicsWorld {
         }
     }
 
+    // MARK: Snow plow
+
+    private func floorState(at x: Float) -> SurfaceState? {
+        for st in ordered where st.surface.kind == .displayBottom && x >= st.surface.minX && x <= st.surface.maxX {
+            return st
+        }
+        return nil
+    }
+
+    /// Sends the plow in from the right edge. No-op if one is already running.
+    func startPlow() {
+        guard plow == nil, !region.isEmpty else { return }
+        let x = Float(region.maxX) + 20
+        let ground = floorState(at: Float(region.maxX) - 1)?.surface.topY ?? Float(region.minY)
+        plow = PlowVehicle(bladeX: x, groundY: ground)
+    }
+
+    private func emitPlowSnow(volume: Float, at p: SIMD2<Float>, velocity: SIMD2<Float>) {
+        guard volume > 0 else { return }
+        emit([DisplacedCluster(position: p, velocity: velocity, volume: volume)])
+    }
+
+    /// Plow dynamics: engine force − drag − load resistance (∝ pushed snow) drives speed; the blade
+    /// sweeps the floor's height field, the removed snow becomes the carried pile, excess spills
+    /// forward over the blade, and what remains is dumped off the end of the floor.
+    private func stepPlow(dt: Float) {
+        guard var p = plow else { return }
+        let c = config
+        let load = min(p.carried, 2 * c.plowCapacity) * c.plowLoadResistance
+        let accel = c.plowEngineForce - load - c.plowDrag * p.speed
+        p.speed = min(max(p.speed + accel * dt, c.plowMinSpeed), c.plowEngineForce / c.plowDrag)
+        let oldX = p.bladeX
+        let newX = oldX - p.speed * dt
+        p.wheelAngle += p.speed * dt / PlowVehicle.wheelRadius
+
+        plowBlockedState = nil; plowBlockedEdge = nil
+        if let st = floorState(at: oldX) {
+            p.groundY = st.surface.topY
+            let a = newX - st.surface.minX, b = oldX - st.surface.minX
+            let removed = st.field.sweep(fromLocalX: a, toLocalX: b, keepDepth: c.plowResidueDepth)
+            p.carried += removed
+            st.dirty = true
+            plowBlockedState = st
+            plowBlockedEdge = max(0, Int(ceil((newX - st.surface.minX) / st.field.binWidth - 0.5)) - 1)   // last unswept bin
+            // Spray thrown by the blade (visual only: zero volume).
+            p.sprayAccumulator += removed / 40
+            var sprays = 0
+            while p.sprayAccumulator >= 1, sprays < 3 {
+                p.sprayAccumulator -= 1; sprays += 1
+                var sp = SnowParticle.blank
+                sp.position = SIMD2(newX - 2, p.groundY + rng.float(2...(4 + p.pileHeight)))
+                sp.velocity = SIMD2(-p.speed * rng.float(0.4...1.1), rng.float(50...140))
+                sp.radius = rng.float(1...2.2); sp.mass = 0.9; sp.opacity = 0.85; sp.volume = 0
+                sp.state = .displaced
+                pool.spawn(sp)
+            }
+        } else if p.carried > 0 {
+            // Past the end of the floor: dump the pile; it falls away and is accounted as lost.
+            var left = p.carried
+            while left > 0 {
+                let v = min(left, 250)
+                left -= v
+                totals.lostVolume += v
+                var sp = SnowParticle.blank
+                sp.position = SIMD2(oldX - rng.float(0...10), p.groundY + p.pileHeight * rng.float(0.3...1))
+                sp.velocity = SIMD2(-p.speed * 0.5, rng.float(0...40))
+                sp.radius = min(10, 2 + sqrt(v) * 0.25); sp.mass = 1.6; sp.opacity = 0.95; sp.volume = 0
+                sp.state = .displaced
+                pool.spawn(sp)
+            }
+            p.carried = 0
+        }
+
+        // Overflow: snow that does not fit on the blade spills over the pile, ahead of the vehicle.
+        if p.carried > c.plowCapacity {
+            let v = min(p.carried - c.plowCapacity, 160)
+            p.carried -= v
+            emitPlowSnow(volume: v,
+                         at: SIMD2(newX - 3, p.groundY + p.pileHeight + 2),
+                         velocity: SIMD2(-p.speed * rng.float(1.4...1.8) - rng.float(30...60), rng.float(25...70)))   // faster than the blade, so it lands ahead
+        }
+
+        p.bladeX = newX
+        if newX < Float(region.minX) - PlowVehicle.spriteWidth - 20 {
+            plow = nil
+            lastPlowEnd = time
+            plowBlockedState = nil; plowBlockedEdge = nil
+        } else {
+            plow = p
+        }
+    }
+
     // MARK: Per-frame maintenance
 
     /// Relaxes fields, clips depth, and sheds a bounded amount at window edges. Call once per frame.
     func finishFrame() {
+        if config.plowAuto, plow == nil, time - lastPlowEnd >= Double(config.plowInterval),
+           ordered.contains(where: { $0.surface.kind == .displayBottom && $0.field.volume > 600 }) {
+            startPlow()
+        }
         for s in ordered {
             guard s.dirty else { continue }
-            let moved = s.field.relax(iterations: 3)
-            totals.clippedVolume += s.field.clipToMaxDepth()
+            let moved = s.field.relax(iterations: 3, blockedEdge: s === plowBlockedState ? plowBlockedEdge : nil)
+            let clipped = s.field.clipToMaxDepth()
+            if clipped > 0, s === plowBlockedState, plow != nil {
+                plow!.carried += clipped          // a pile too deep ahead of the blade is pushed along with it
+            } else {
+                totals.clippedVolume += clipped
+            }
             if s.surface.kind == .windowTop {
                 let flake = config.compaction * Float.pi * config.maxRadius * config.maxRadius
                 let shed = s.field.shedEdges(edgeBins: 3, edgeLimit: s.field.maxDepth * 0.35,
@@ -280,6 +416,11 @@ final class PhysicsWorld {
         }
     }
 
+    private static func hash(_ x: Float) -> Float {
+        let v = sin(x * 127.1) * 43758.5453
+        return v - floor(v)
+    }
+
     func fill(snapshot s: inout RenderSnapshot, showSurfaces: Bool, stats: SimulationStats) {
         s.particles.removeAll(keepingCapacity: true)
         s.surfaces.removeAll(keepingCapacity: true)
@@ -290,6 +431,21 @@ final class PhysicsWorld {
             let p = pool[i]
             s.particles.append(RenderParticle(position: p.position, radius: p.radius, rotation: p.rotation,
                                               opacity: p.opacity, seed: Float(i & 255) / 255))
+        }
+        s.vehicles.removeAll(keepingCapacity: true)
+        if let p = plow {
+            s.vehicles.append(RenderVehicle(bladeX: p.bladeX, groundY: p.groundY,
+                                            wheelAngle: p.wheelAngle, bob: sin(p.wheelAngle * 3) * 0.5))
+            // Pushed pile in front of the blade (render-only flakes in a mound shape).
+            let n = min(70, Int(p.carried / 22))
+            let h = p.pileHeight, w = h * 1.7
+            for k in 0..<n {
+                let u = Self.hash(Float(k) * 1.37), v = Self.hash(Float(k) * 7.91 + 3)
+                let x = p.bladeX + 3 - u * w
+                let y = p.groundY + 2 + v * h * (1 - u * 0.85)
+                s.particles.append(RenderParticle(position: SIMD2(x, y), radius: 2.5 + 3.5 * Self.hash(Float(k) * 3.3),
+                                                  rotation: 0, opacity: 0.97, seed: Self.hash(Float(k))))
+            }
         }
         for st in ordered {
             let sf = st.surface

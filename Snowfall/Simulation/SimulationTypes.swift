@@ -130,6 +130,16 @@ struct SimulationConfiguration: Sendable, Equatable {
     var windowStickSpeed: Float = 350
     var maxDisplacementClusters = 24
 
+    // Snow plow (JCB). Units: pt, s. Terminal speed unloaded = engine / drag = 90 pt/s.
+    var plowAuto = true
+    var plowInterval: Float = 180
+    var plowEngineForce: Float = 36
+    var plowDrag: Float = 0.4
+    var plowLoadResistance: Float = 0.006    // force per pt² of pushed snow (saturates at 2× capacity)
+    var plowMinSpeed: Float = 18
+    var plowCapacity: Float = 1500           // pt² the blade can carry before snow spills over
+    var plowResidueDepth: Float = 1.0
+
     var seed: UInt64 = 1
 
     var poolCapacity: Int { maxParticles + spawnReserve }

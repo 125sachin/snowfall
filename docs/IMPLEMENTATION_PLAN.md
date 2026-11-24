@@ -34,5 +34,14 @@ All 13 milestones are implemented; see `FINAL_AUDIT.md` for verification status 
 - Window motion: below the stick speed snow is carried; above it a growing fraction slips/falls as ≤24 clusters; volume is conserved; closed windows release their snow as bounded clusters; removed displays drop theirs.
 - Rendering: MSL compiled at runtime, premultiplied alpha, instanced procedural flakes, triangle-list snow surfaces, two reused buffer sets.
 
+## Snow plow (JCB)
+A procedurally drawn backhoe loader (Core Graphics → Metal textures, rotating wheels) drives right → left on the display floor.
+Physics (pt, s): speed' = engine − drag·speed − load·min(carried, 2·capacity); unloaded top speed 90 pt/s, ~45 pt/s fully loaded.
+The blade sweeps the floor height field down to a 1 pt residue; swept snow becomes the carried pile in front of the blade.
+Beyond blade capacity (1500 pt²) snow spills over the pile and is thrown faster than the blade so it lands ahead; relaxation
+is blocked across the blade so snow cannot slump through it; a pile too deep ahead is pushed along. At the end of the floor the
+pile is dumped (counted as lost volume). Runs automatically every N minutes (default 3) when the floor holds snow, or on demand
+(menu "Send Plow", Settings → Snow). Dev flag: `--args -plowAfterSeconds 30`.
+
 ## Known limitations
 Bundle ID is the placeholder `com.xcode.snowfall`; signing is ad-hoc (`-`) until the user supplies an identity.

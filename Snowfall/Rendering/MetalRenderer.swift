@@ -15,6 +15,7 @@ enum RendererError: Error, LocalizedError {
 }
 
 private struct ViewUniforms { var origin: SIMD2<Float>; var size: SIMD2<Float> }
+private struct SpriteUniforms { var center: SIMD2<Float>; var size: SIMD2<Float>; var rotation: Float; var pad: Float = 0 }
 private struct SurfaceUniforms {
     var minX: Float; var baseY: Float; var binWidth: Float
     var binCount: UInt32; var heightOffset: UInt32; var maxDepth: Float
@@ -36,6 +37,9 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
     private let particlePipeline: MTLRenderPipelineState
     private let surfacePipeline: MTLRenderPipelineState
     private let debugPipeline: MTLRenderPipelineState
+    private let spritePipeline: MTLRenderPipelineState
+    private let bodyTexture: MTLTexture?
+    private let wheelTexture: MTLTexture?
     private let inFlight = DispatchSemaphore(value: 2)
     private var ring = 0
     private var particleBuffers: [MTLBuffer] = []
@@ -83,6 +87,9 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         particlePipeline = try pipeline(lib, "particle_vertex", "particle_fragment")
         debugPipeline = try pipeline(lib, "debug_vertex", "debug_fragment")
         surfacePipeline = try pipeline(surfLib, "surface_vertex", "surface_fragment")
+        spritePipeline = try pipeline(lib, "sprite_vertex", "sprite_fragment")
+        let tex = VehicleSprites.makeTextures(device: device)
+        bodyTexture = tex?.body; wheelTexture = tex?.wheel
 
         func buf(_ bytes: Int) throws -> MTLBuffer {
             guard let b = device.makeBuffer(length: bytes, options: .storageModeShared) else {
@@ -169,6 +176,9 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
                 enc.setVertexBytes(&u, length: MemoryLayout<ViewUniforms>.stride, index: 2)
                 enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: s.binCount * 12)
             }
+            if let body = bodyTexture, let wheel = wheelTexture {
+                for v in snap.vehicles { drawVehicle(v, body: body, wheel: wheel, encoder: enc, uniforms: &u, frame: f) }
+            }
             if pc > 0 {
                 enc.setRenderPipelineState(particlePipeline)
                 enc.setVertexBuffer(pBuf, offset: 0, index: 0)
@@ -186,5 +196,28 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         cmd.present(drawable)
         cmd.commit()
         monitor.recordRenderFrame(cpuMs: (CACurrentMediaTimeShim.now() - start) * 1000)
+    }
+
+    private func drawVehicle(_ v: RenderVehicle, body: MTLTexture, wheel: MTLTexture,
+                             encoder enc: MTLRenderCommandEncoder, uniforms u: inout ViewUniforms, frame f: CGRect) {
+        let k = PlowVehicle.spriteScale
+        let left = v.bladeX - 2 * k
+        let right = left + Float(VehicleSprites.bodySize.width) * k
+        guard right > Float(f.minX), left < Float(f.maxX), v.groundY >= Float(f.minY) - 120, v.groundY <= Float(f.maxY) else { return }
+        let gy = v.groundY + v.bob
+        enc.setRenderPipelineState(spritePipeline)
+        func draw(_ tex: MTLTexture, cx: Float, cy: Float, w: Float, h: Float, rot: Float) {
+            var s = SpriteUniforms(center: SIMD2(cx, cy), size: SIMD2(w, h), rotation: rot)
+            enc.setVertexBytes(&s, length: MemoryLayout<SpriteUniforms>.stride, index: 0)
+            enc.setVertexBytes(&u, length: MemoryLayout<ViewUniforms>.stride, index: 1)
+            enc.setFragmentTexture(tex, index: 0)
+            enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        }
+        let bw = Float(VehicleSprites.bodySize.width) * k, bh = Float(VehicleSprites.bodySize.height) * k
+        draw(body, cx: left + bw / 2, cy: gy + bh / 2, w: bw, h: bh, rot: 0)
+        for w in [VehicleSprites.rearWheel, VehicleSprites.frontWheel] {
+            let d = Float(w.r) * 2 * k
+            draw(wheel, cx: left + Float(w.x) * k, cy: gy + Float(w.y) * k, w: d, h: d, rot: v.wheelAngle)
+        }
     }
 }

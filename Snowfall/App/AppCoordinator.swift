@@ -77,6 +77,13 @@ final class AppCoordinator {
                 MainActor.assumeIsolated { self?.overlays.reassert() }
             })
         }
+        // Dev aid: `open Snowfall.app --args -plowAfterSeconds 40` sends the plow after 40 s.
+        let after = UserDefaults.standard.double(forKey: "plowAfterSeconds")
+        if after > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + after) { [weak self] in
+                MainActor.assumeIsolated { self?.sendPlow() }
+            }
+        }
         overlays.onOcclusionLost = { SnowfallLogger.overlay.info("overlay occlusion lost; re-asserting") }
         applyAll()
     }
@@ -94,6 +101,8 @@ final class AppCoordinator {
     // MARK: Actions
 
     func togglePause() { isPaused.toggle(); applyAll() }
+
+    func sendPlow() { simulation.sendPlow() }
 
     func clearSnow() {
         simulation.clearSnow()
@@ -150,7 +159,8 @@ final class AppCoordinator {
             opacity: s.particleOpacity, maxParticles: s.maxParticles, accumulation: s.accumulationEnabled,
             maxDepth: s.maxAccumulationDepth, pointerEnabled: s.pointerInteractionEnabled,
             pointerRadius: s.pointerRadius, pointerStrength: s.pointerStrength, windowPhysics: windowPhysics,
-            displacementStrength: s.windowDisplacementStrength, lowPower: lowPower, showSurfaces: s.showSurfaceDebug)
+            displacementStrength: s.windowDisplacementStrength, lowPower: lowPower, showSurfaces: s.showSurfaceDebug,
+            plowAuto: s.plowAutomatic, plowIntervalSeconds: Double(s.plowIntervalMinutes) * 60)
         simulation.updateDisplays(enabled)
         simulation.apply(settings: ss, targetFPS: Double(fps))
 

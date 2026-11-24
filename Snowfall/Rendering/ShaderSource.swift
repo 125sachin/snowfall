@@ -59,6 +59,29 @@ enum ShaderSource {
     fragment float4 debug_fragment(DebugOut in [[stage_in]]) {
         return float4(in.color.rgb * in.color.a, in.color.a);
     }
+
+    struct SpriteUniforms { float2 center; float2 size; float rotation; float pad; };
+    struct SpriteOut { float4 position [[position]]; float2 uv; };
+
+    vertex SpriteOut sprite_vertex(uint vid [[vertex_id]],
+                                   constant SpriteUniforms &s [[buffer(0)]],
+                                   constant ViewUniforms &u [[buffer(1)]]) {
+        const float2 corners[4] = { float2(-0.5,-0.5), float2(0.5,-0.5), float2(-0.5,0.5), float2(0.5,0.5) };
+        float2 c = corners[vid];
+        float cs = cos(s.rotation), sn = sin(s.rotation);
+        float2 p = c * s.size;
+        p = float2(p.x * cs - p.y * sn, p.x * sn + p.y * cs);
+        float2 local = s.center + p - u.origin;
+        SpriteOut o;
+        o.position = float4((local / u.size) * 2.0 - 1.0, 0.0, 1.0);
+        o.uv = float2(c.x + 0.5, 0.5 - c.y);
+        return o;
+    }
+
+    fragment float4 sprite_fragment(SpriteOut in [[stage_in]], texture2d<float> tex [[texture(0)]]) {
+        constexpr sampler smp(filter::linear, address::clamp_to_edge);
+        return tex.sample(smp, in.uv);   // premultiplied
+    }
     """
 
     static let surface = """

@@ -37,6 +37,8 @@ struct MenuBarView: View {
                 Button(coordinator.isPaused ? "Resume" : "Pause") { coordinator.togglePause() }
                     .disabled(!store.settings.snowfallEnabled)
                 Button("Clear Snow") { coordinator.clearSnow() }
+                Button("Send Plow") { coordinator.sendPlow() }
+                    .help("Drive the JCB along the bottom of the screen to clear settled snow.")
             }
 
             HStack {

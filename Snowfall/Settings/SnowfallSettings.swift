@@ -36,6 +36,8 @@ struct SnowfallSettings: Codable, Equatable, Sendable {
     var launchAtLogin = false
     var showDiagnostics = false
     var showSurfaceDebug = false
+    var plowAutomatic = true
+    var plowIntervalMinutes = 3         // 1...60
     /// UUIDs of displays where snowfall is turned off.
     var disabledDisplays: [String] = []
 
@@ -65,6 +67,8 @@ struct SnowfallSettings: Codable, Equatable, Sendable {
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? d.launchAtLogin
         showDiagnostics = try c.decodeIfPresent(Bool.self, forKey: .showDiagnostics) ?? d.showDiagnostics
         showSurfaceDebug = try c.decodeIfPresent(Bool.self, forKey: .showSurfaceDebug) ?? d.showSurfaceDebug
+        plowAutomatic = try c.decodeIfPresent(Bool.self, forKey: .plowAutomatic) ?? d.plowAutomatic
+        plowIntervalMinutes = try c.decodeIfPresent(Int.self, forKey: .plowIntervalMinutes) ?? d.plowIntervalMinutes
         disabledDisplays = try c.decodeIfPresent([String].self, forKey: .disabledDisplays) ?? d.disabledDisplays
     }
 
@@ -80,6 +84,7 @@ struct SnowfallSettings: Codable, Equatable, Sendable {
         s.pointerRadius = Self.clamp(pointerRadius, 40, 300, fallback: 120)
         s.pointerStrength = Self.clamp(pointerStrength, 0, 1)
         s.windowDisplacementStrength = Self.clamp(windowDisplacementStrength, 0, 1)
+        s.plowIntervalMinutes = min(max(plowIntervalMinutes, 1), 60)
         s.disabledDisplays = Array(Set(disabledDisplays)).sorted()
         s.version = Self.currentVersion
         return s

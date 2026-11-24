@@ -25,6 +25,13 @@ struct DebugRect: Sendable {
     var color: SIMD4<Float>
 }
 
+struct RenderVehicle: Sendable {
+    var bladeX: Float        // world x of the blade face (vehicle front, facing left)
+    var groundY: Float
+    var wheelAngle: Float    // radians, counter-clockwise when driving left
+    var bob: Float
+}
+
 struct SimulationStats: Sendable, Equatable {
     var particleCount = 0
     var surfaceCount = 0
@@ -43,5 +50,6 @@ struct RenderSnapshot: Sendable {
     var surfaces: [RenderSurface] = []
     var heights: [Float] = []
     var debugRects: [DebugRect] = []
+    var vehicles: [RenderVehicle] = []
     var stats = SimulationStats()
 }

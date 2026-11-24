@@ -77,6 +77,9 @@ final class SimulationCoordinator: @unchecked Sendable {
         }
     }
 
+    /// Sends the snow plow across the floor (no-op if it is already running).
+    func sendPlow() { queue.async { [self] in world.startPlow() } }
+
     func clearSnow() { queue.async { [self] in world.clearSnow(); publish() } }
 
     /// Call after sleep/wake or any long suspension so elapsed time does not burst into physics.
