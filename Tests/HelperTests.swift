@@ -149,7 +149,7 @@ final class HelperTests: XCTestCase {
         XCTAssertNotNil(w2.santa)
         let (w3, _, _) = world(helper: .random)
         w3.startHelper()
-        XCTAssertTrue(w3.plow != nil || w3.santa != nil)
+        XCTAssertTrue(w3.isHelperRunning)
     }
 
     func testAutoRunUsesChosenHelperAndNeedsSnow() {
@@ -174,7 +174,7 @@ final class HelperTests: XCTestCase {
                        CollisionSurface(id: "win", frame: CGRect(x: 100, y: 100, width: 400, height: 300), velocity: .zero, kind: .windowTop, zRank: 0)])
         let win = w.state(forSurface: "win")!
         for i in 0..<win.field.binCount { win.field.add(volume: 10 * win.field.binWidth, toBin: i) }
-        XCTAssertEqual(w.eligibleHelpers(), [.santa, .ironMan], "only window snow: the JCB has nothing to plow")
+        XCTAssertEqual(w.eligibleHelpers(), [.santa, .ironMan, .thor], "only window snow: the JCB has nothing to plow")
     }
 
     func testRenderSnapshotContainsSanta() {

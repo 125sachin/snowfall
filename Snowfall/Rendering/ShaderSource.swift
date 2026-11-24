@@ -100,8 +100,8 @@ enum ShaderSource {
         return float4(in.color.rgb * in.color.a, in.color.a);
     }
 
-    struct SpriteUniforms { float2 center; float2 size; float rotation; float pad; };
-    struct SpriteOut { float4 position [[position]]; float2 uv; };
+    struct SpriteUniforms { float2 center; float2 size; float rotation; float alpha; };
+    struct SpriteOut { float4 position [[position]]; float2 uv; float alpha; };
 
     vertex SpriteOut sprite_vertex(uint vid [[vertex_id]],
                                    constant SpriteUniforms &s [[buffer(0)]],
@@ -115,12 +115,13 @@ enum ShaderSource {
         SpriteOut o;
         o.position = float4((local / u.size) * 2.0 - 1.0, 0.0, 1.0);
         o.uv = float2(c.x + 0.5, 0.5 - c.y);
+        o.alpha = s.alpha;
         return o;
     }
 
     fragment float4 sprite_fragment(SpriteOut in [[stage_in]], texture2d<float> tex [[texture(0)]]) {
         constexpr sampler smp(filter::linear, address::clamp_to_edge);
-        return tex.sample(smp, in.uv);   // premultiplied
+        return tex.sample(smp, in.uv) * in.alpha;   // premultiplied
     }
     """
 

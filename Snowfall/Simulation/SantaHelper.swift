@@ -55,7 +55,7 @@ extension PhysicsWorld {
     // MARK: Santa
 
     func startSanta() {
-        guard santa == nil, plow == nil, ironMan == nil, !region.isEmpty else { return }
+        guard santa == nil, plow == nil, ironMan == nil, thor == nil, !region.isEmpty else { return }
         let hx = max(Float(region.minX) + 300, Float(region.maxX) - 200)
         let floorY = floorState(at: hx)?.surface.topY ?? Float(region.minY)
         let hy = floorY + max(150, min(300, Float(region.height) * 0.28))

@@ -50,6 +50,22 @@ struct RenderIronMan: Sendable {
     var intensity: Float
 }
 
+struct RenderRing: Sendable { var x: Float; var y: Float; var radius: Float; var alpha: Float }
+struct RenderCrack: Sendable { var x: Float; var y: Float; var radius: Float; var alpha: Float; var seed: Float }
+
+struct RenderThor: Sendable {
+    var x: Float              // sprite centre x
+    var y: Float              // sprite bottom y
+    var tilt: Float
+    var hammerAngle: Float    // radians; 0 = pointing left, positive = down, negative = raised
+    var bolt: [SIMD2<Float>]  // jagged lightning polyline (empty when none)
+    var boltAlpha: Float
+    var rings: [RenderRing]
+    var cracks: [RenderCrack]
+    var flash: Float
+    var flashPos: SIMD2<Float>
+}
+
 struct SimulationStats: Sendable, Equatable {
     var particleCount = 0
     var surfaceCount = 0
@@ -71,5 +87,6 @@ struct RenderSnapshot: Sendable {
     var vehicles: [RenderVehicle] = []
     var santas: [RenderSanta] = []
     var ironMen: [RenderIronMan] = []
+    var thors: [RenderThor] = []
     var stats = SimulationStats()
 }

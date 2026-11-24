@@ -53,6 +53,8 @@ final class PhysicsWorld {
     var santa: SantaRun?
     var tornado: Tornado?
     var ironMan: IronManRun?
+    var thor: ThorRun?
+    var thorBlowLog: [ThorBlow] = []
     var lastHelperEnd: Double = 0
     private var plowBlockedState: SurfaceState?
     private var plowBlockedEdge: Int?
@@ -147,7 +149,7 @@ final class PhysicsWorld {
     }
 
     var isPlowRunning: Bool { plow != nil }
-    var isHelperRunning: Bool { plow != nil || santa != nil || tornado != nil || ironMan != nil }
+    var isHelperRunning: Bool { plow != nil || santa != nil || tornado != nil || ironMan != nil || thor != nil }
 
     func clearSnow() {
         for s in ordered { s.field.clear() }
@@ -219,6 +221,7 @@ final class PhysicsWorld {
         stepSanta(dt: dt)
         stepTornado(dt: dt)
         stepIronMan(dt: dt)
+        stepThor(dt: dt)
     }
 
     /// Returns true when the particle came to rest (and should be removed).
@@ -337,13 +340,14 @@ final class PhysicsWorld {
         case .jcb: startPlow()
         case .santa: startSanta()
         case .ironMan: startIronMan()
+        case .thor: startThor()
         case .random: break
         }
     }
 
     /// Sends the plow in from the right edge. No-op if one is already running.
     func startPlow() {
-        guard plow == nil, santa == nil, ironMan == nil, !region.isEmpty else { return }
+        guard plow == nil, santa == nil, ironMan == nil, thor == nil, !region.isEmpty else { return }
         let x = Float(region.maxX) + 20
         let ground = floorState(at: Float(region.maxX) - 1)?.surface.topY ?? Float(region.minY)
         plow = PlowVehicle(bladeX: x, groundY: ground)
@@ -490,6 +494,8 @@ final class PhysicsWorld {
         s.vehicles.removeAll(keepingCapacity: true)
         s.santas.removeAll(keepingCapacity: true)
         s.ironMen.removeAll(keepingCapacity: true)
+        s.thors.removeAll(keepingCapacity: true)
+        if let r = thor { s.thors.append(r.renderState) }
         if let m = ironMan {
             s.ironMen.append(RenderIronMan(x: m.x, y: m.y, bob: m.bob, firing: m.firing, eye: m.eyeWorld, spot: m.spot, spot2: m.spot2, intensity: m.intensity))
         }

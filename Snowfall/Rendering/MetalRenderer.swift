@@ -15,7 +15,7 @@ enum RendererError: Error, LocalizedError {
 }
 
 private struct ViewUniforms { var origin: SIMD2<Float>; var size: SIMD2<Float> }
-private struct SpriteUniforms { var center: SIMD2<Float>; var size: SIMD2<Float>; var rotation: Float; var pad: Float = 0 }
+private struct SpriteUniforms { var center: SIMD2<Float>; var size: SIMD2<Float>; var rotation: Float; var alpha: Float = 1 }
 private struct SurfaceUniforms {
     var minX: Float; var baseY: Float; var binWidth: Float
     var binCount: UInt32; var heightOffset: UInt32; var maxDepth: Float
@@ -43,6 +43,7 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
     private let santaTexture: MTLTexture?
     private let wandTexture: MTLTexture?
     private let ironTextures: IronManSprites.Textures?
+    private let thorTextures: ThorSprites.Textures?
     private let inFlight = DispatchSemaphore(value: 2)
     private var ring = 0
     private var particleBuffers: [MTLBuffer] = []
@@ -96,6 +97,7 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         let santa = SantaSprites.makeTextures(device: device)
         santaTexture = santa?.body; wandTexture = santa?.wand
         ironTextures = IronManSprites.makeTextures(device: device)
+        thorTextures = ThorSprites.makeTextures(device: device)
 
         func buf(_ bytes: Int) throws -> MTLBuffer {
             guard let b = device.makeBuffer(length: bytes, options: .storageModeShared) else {
@@ -188,6 +190,9 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
             if let body = santaTexture, let wand = wandTexture {
                 for sa in snap.santas { drawSanta(sa, body: body, wand: wand, encoder: enc, uniforms: &u, frame: f) }
             }
+            if let tex = thorTextures {
+                for th in snap.thors { drawThor(th, textures: tex, encoder: enc, uniforms: &u, frame: f) }
+            }
             if let tex = ironTextures {
                 for m in snap.ironMen { drawIronMan(m, textures: tex, encoder: enc, uniforms: &u, frame: f) }
             }
@@ -211,12 +216,57 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
     }
 
     private func drawSprite(_ tex: MTLTexture, encoder enc: MTLRenderCommandEncoder, uniforms u: inout ViewUniforms,
-                            cx: Float, cy: Float, w: Float, h: Float, rot: Float) {
-        var s = SpriteUniforms(center: SIMD2(cx, cy), size: SIMD2(w, h), rotation: rot)
+                            cx: Float, cy: Float, w: Float, h: Float, rot: Float, alpha: Float = 1) {
+        var s = SpriteUniforms(center: SIMD2(cx, cy), size: SIMD2(w, h), rotation: rot, alpha: alpha)
         enc.setVertexBytes(&s, length: MemoryLayout<SpriteUniforms>.stride, index: 0)
         enc.setVertexBytes(&u, length: MemoryLayout<ViewUniforms>.stride, index: 1)
         enc.setFragmentTexture(tex, index: 0)
         enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+    }
+
+    private func drawThor(_ t: RenderThor, textures tex: ThorSprites.Textures,
+                          encoder enc: MTLRenderCommandEncoder, uniforms u: inout ViewUniforms, frame f: CGRect) {
+        let k = ThorMetrics.scale
+        let w = ThorMetrics.width * k, h = ThorMetrics.height * k
+        enc.setRenderPipelineState(spritePipeline)
+        // Cracks and shockwave lie on the ground: squashed ellipses (side view).
+        for c in t.cracks where c.x + c.radius > Float(f.minX) && c.x - c.radius < Float(f.maxX) && c.y > Float(f.minY) - 40 && c.y < Float(f.maxY) {
+            drawSprite(tex.crack, encoder: enc, uniforms: &u, cx: c.x, cy: c.y + 4, w: c.radius * 2, h: c.radius * 0.55, rot: 0, alpha: c.alpha)
+        }
+        for r in t.rings where r.radius > 1 && r.x + r.radius > Float(f.minX) && r.x - r.radius < Float(f.maxX) {
+            drawSprite(tex.ring, encoder: enc, uniforms: &u, cx: r.x, cy: r.y + 6, w: r.radius * 2, h: r.radius * 0.5, rot: 0, alpha: r.alpha)
+            drawSprite(tex.ring, encoder: enc, uniforms: &u, cx: r.x, cy: r.y + r.radius * 0.35, w: r.radius * 1.2, h: r.radius * 1.2, rot: 0, alpha: r.alpha * 0.5)
+        }
+        // Thor and Mjolnir.
+        if t.x + w > Float(f.minX) && t.x - w < Float(f.maxX) && t.y + h > Float(f.minY) && t.y < Float(f.maxY) {
+            drawSprite(tex.body, encoder: enc, uniforms: &u, cx: t.x, cy: t.y + h / 2, w: w, h: h, rot: t.tilt)
+            let left = t.x - w / 2
+            var hand = SIMD2(left + ThorMetrics.hand.x * k, t.y + ThorMetrics.hand.y * k)
+            if t.tilt != 0 {                                    // the hand rotates with the body about its centre
+                let c = SIMD2(t.x, t.y + h / 2), o = hand - c
+                hand = c + SIMD2(o.x * cos(t.tilt) - o.y * sin(t.tilt), o.x * sin(t.tilt) + o.y * cos(t.tilt))
+            }
+            let dir = SIMD2(-cos(t.hammerAngle), -sin(t.hammerAngle))
+            let c = hand + dir * (ThorMetrics.pivotToCenter * k)
+            drawSprite(tex.hammer, encoder: enc, uniforms: &u, cx: c.x, cy: c.y,
+                       w: ThorMetrics.hammerSize.x * k, h: ThorMetrics.hammerSize.y * k, rot: t.hammerAngle)
+        }
+        // Lightning bolt: glow underneath, white-hot core on top.
+        if t.bolt.count > 1 {
+            for (a, b) in zip(t.bolt, t.bolt.dropFirst()) {
+                let d = b - a
+                let len = simd_length(d) + 3
+                guard len > 3 else { continue }
+                let mid = (a + b) / 2
+                let ang = atan2(d.y, d.x)
+                drawSprite(tex.bolt, encoder: enc, uniforms: &u, cx: mid.x, cy: mid.y, w: len, h: 30, rot: ang, alpha: t.boltAlpha)
+                drawSprite(tex.bolt, encoder: enc, uniforms: &u, cx: mid.x, cy: mid.y, w: len, h: 9, rot: ang, alpha: t.boltAlpha)
+            }
+        }
+        if t.flash > 0.02 {
+            let s = 190 * t.flash + 40
+            drawSprite(tex.glow, encoder: enc, uniforms: &u, cx: t.flashPos.x, cy: t.flashPos.y + 10, w: s, h: s, rot: 0, alpha: min(1, t.flash))
+        }
     }
 
     private func drawIronMan(_ m: RenderIronMan, textures t: IronManSprites.Textures,

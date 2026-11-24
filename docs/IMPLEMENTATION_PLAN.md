@@ -57,6 +57,11 @@ behind, then flies off.
 sweep ahead of him out of phase: one lands on the highest surface under its target (a window top), the other on the floor. Heat model: depth melted per
 second = 450 · exp(−d²/2σ²) (σ = 14 pt) around the spot, so melting is local and needs a few passes for deep snow; melted volume is counted as lost and
 produces rising, expanding, fading steam puffs. Airborne flakes crossing a beam segment are vaporized (their snow is melted too).
+**Thor:** picks 2–3 sites on snowy surfaces (weighted by snow volume, ≥260 pt apart, visited right → left), flies in, lands with the hammer head on the snow
+top, and swings twice per site on a fixed timeline (wind-up 0.5 s, blow 1 at 0.64 s, recover, blow 2 at 1.40 s). Blow 1 cracks the ice layer (radius 85 pt, up to 65%
+of depth removed, falling off toward the edge); blow 2 shatters it (radius 155 pt, everything in the core removed). Removed volume is thrown out as fading ice shards
+(counted as lost), airborne snow within 1.6× the radius is blasted outward, and each blow draws a lightning bolt from the sky, a shockwave ring, a crack pattern that fades
+after 3 s, and a flash. He does not clear the whole floor — only the spots he hits.
 **Adding a helper:** see the checklist on `HelperKind`.
 
 ## Known limitations
