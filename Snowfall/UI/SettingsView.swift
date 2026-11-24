@@ -48,7 +48,6 @@ struct SettingsView: View {
 
     private func interaction(_ store: SettingsStore) -> some View {
         @Bindable var store = store
-        let perm = coordinator.permission
         return Form {
             Section("Pointer") {
                 Toggle("Pointer disturbance", isOn: $store.settings.pointerInteractionEnabled)
@@ -59,20 +58,9 @@ struct SettingsView: View {
             }
             Section("Window physics") {
                 Toggle("Snow on window tops", isOn: $store.settings.windowPhysicsEnabled)
-                    .disabled(!perm.isTrusted)
                 LabeledSlider(title: "Displacement", value: $store.settings.windowDisplacementStrength, lowLabel: "Sticky", highLabel: "Slippery")
-                    .disabled(!perm.isTrusted)
-                if perm.isTrusted {
-                    Label("Accessibility access granted", systemImage: "checkmark.circle").foregroundStyle(.green)
-                } else {
-                    Text("Snowfall can let snow rest on window tops if it knows where windows are. That needs Accessibility permission. Snowfall reads only each window's position, size and minimized state — never titles or contents — and nothing leaves your Mac. Without it, snow still falls and settles at the bottom of each display.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    HStack {
-                        Button("Open Accessibility Settings…") { perm.requestAccess() }
-                        Text("Continue without window physics by leaving this off.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
+                Text("Snow settles on the top edge of the front-most windows and stacks on whichever window is in front. It uses each window's position, size and stacking order only — never titles or contents — and needs no special permission.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)

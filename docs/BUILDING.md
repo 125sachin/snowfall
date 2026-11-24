@@ -15,6 +15,6 @@ open build/Build/Products/Release/Snowfall.app
   `makeLibrary(source:)`. The optional *Metal Toolchain* component was not installed when this was
   written, and runtime compilation avoids requiring it. If you prefer precompiled `.metal` files, run
   `xcodebuild -downloadComponent MetalToolchain` and move the sources into `.metal` files.
-- The bundle identifier is the placeholder `com.example.Snowfall`; signing is ad-hoc (`-`).
+- The bundle identifier is the placeholder `com.xcode.snowfall`; signing is ad-hoc (`-`).
   Set your team and identifier in `project.yml` (`PRODUCT_BUNDLE_IDENTIFIER`, `DEVELOPMENT_TEAM`).
 - The app is `LSUIElement` (menu bar only, no Dock icon). There is no app icon yet (empty AppIcon set).

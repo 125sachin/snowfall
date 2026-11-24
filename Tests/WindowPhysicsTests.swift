@@ -145,20 +145,6 @@ final class WindowStackingTests: XCTestCase {
         CollisionSurface(id: id, frame: f, velocity: .zero, kind: .windowTop, zRank: z)
     }
 
-    func testZOrderMatchesByPidAndFrameAndDropsOffscreen() {
-        func w(_ id: String, _ pid: pid_t, _ f: CGRect) -> WindowSnapshot {
-            WindowSnapshot(id: id, processID: pid, frame: f, isVisible: true, isMinimized: false, timestamp: 0)
-        }
-        let a = CGRect(x: 100, y: 100, width: 500, height: 400)
-        let b = CGRect(x: 300, y: 150, width: 500, height: 400)
-        let r = WindowZOrder.apply(to: [w("a", 1, a), w("b", 2, b), w("gone", 3, a)],
-                                   onScreen: [OnScreenWindow(pid: 2, frame: b.insetBy(dx: -2, dy: 0), rank: 0),
-                                              OnScreenWindow(pid: 1, frame: a, rank: 1)])
-        XCTAssertEqual(r.map(\.id).sorted(), ["a", "b"])
-        XCTAssertEqual(r.first { $0.id == "b" }?.zRank, 0)
-        XCTAssertEqual(r.first { $0.id == "a" }?.zRank, 1)
-    }
-
     func testCoveredWindowSnowIsNotDrawn() {
         var c = SimulationConfiguration(); c.density = 0
         let w = PhysicsWorld(config: c)

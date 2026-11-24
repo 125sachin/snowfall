@@ -35,4 +35,4 @@ All 13 milestones are implemented; see `FINAL_AUDIT.md` for verification status 
 - Rendering: MSL compiled at runtime, premultiplied alpha, instanced procedural flakes, triangle-list snow surfaces, two reused buffer sets.
 
 ## Known limitations
-Bundle ID is the placeholder `com.example.Snowfall`; signing is ad-hoc (`-`) until the user supplies an identity.
+Bundle ID is the placeholder `com.xcode.snowfall`; signing is ad-hoc (`-`) until the user supplies an identity.

@@ -23,7 +23,7 @@ validation/persistence/migration.
 | Menu bar item appears | verified (screenshot) |
 | Click-through into Finder/browser, typing, dragging windows | **not yet verified by hand** |
 | Pointer scatters snow | **not yet verified by hand** |
-| Accessibility granted → snow on window tops, move/resize/close | **not yet verified** (needs permission granted to the app) |
+| Snow on window tops (window-server list, no permission) | snow seen on a window top in a screenshot; move/resize/close/stacking **not yet checked by hand** |
 | External display (same/different scale), display above/left, hot-plug | **not tested** (one display available) |
 | Spaces, Mission Control, full-screen apps | **not tested** |
 | Sleep/wake | **not tested** (clock reset logic is implemented) |

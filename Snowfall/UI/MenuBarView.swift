@@ -30,11 +30,6 @@ struct MenuBarView: View {
             Toggle("Accumulation", isOn: $store.settings.accumulationEnabled)
             Toggle("Mouse interaction", isOn: $store.settings.pointerInteractionEnabled)
             Toggle("Window physics", isOn: $store.settings.windowPhysicsEnabled)
-                .disabled(!coordinator.permission.isTrusted)
-            if !coordinator.permission.isTrusted {
-                Text("Window physics needs Accessibility permission. Open Settings → Interaction.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
 
             Divider()
 

@@ -7,7 +7,6 @@ import Observation
 @Observable
 final class AppCoordinator {
     let store: SettingsStore
-    let permission = AccessibilityPermissionManager()
 
     var isPaused = false
     private(set) var displays: [DisplayDescriptor] = []
@@ -26,6 +25,7 @@ final class AppCoordinator {
     @ObservationIgnored private var suspended = false
     @ObservationIgnored private var windowsRunning = false
     @ObservationIgnored private var started = false
+    @ObservationIgnored private var lastStatus = ""
     @ObservationIgnored private var activity: NSObjectProtocol?
 
     init(store: SettingsStore = SettingsStore()) {
@@ -36,9 +36,6 @@ final class AppCoordinator {
 
     /// True when snow should be falling.
     var isRunning: Bool { store.settings.snowfallEnabled && !isPaused }
-
-    /// Window physics is effective only when enabled *and* Accessibility is granted.
-    var windowPhysicsActive: Bool { store.settings.windowPhysicsEnabled && permission.isTrusted }
 
     // MARK: Lifecycle
 
@@ -66,13 +63,6 @@ final class AppCoordinator {
             MainActor.assumeIsolated { self?.applyAll() }
         })
 
-        // Accessibility can be revoked/granted while running; a 2 s check is cheap.
-        timers.append(Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                if self.permission.refresh() { self.applyAll() }
-            }
-        })
         timers.append(Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.refreshStats() }
         })
@@ -132,7 +122,6 @@ final class AppCoordinator {
         displays = DisplayDescriptor.current()
         simulation.resetClock()
         monitor.resetFrameClock()
-        permission.refresh()
         applyAll()
     }
 
@@ -152,7 +141,9 @@ final class AppCoordinator {
         let running = s.snowfallEnabled && !isPaused && !suspended && !enabled.isEmpty
         let lowPower = s.lowPowerMode || ProcessInfo.processInfo.isLowPowerModeEnabled
         let fps = effectiveFPS(s)
-        let windowPhysics = s.windowPhysicsEnabled && permission.isTrusted
+        let windowPhysics = s.windowPhysicsEnabled
+        let status = "window physics: enabled=\(s.windowPhysicsEnabled)"
+        if status != lastStatus { lastStatus = status; SnowfallLogger.app.info("\(status, privacy: .public)") }
 
         let ss = SimulationSettings(
             running: running, density: s.particleDensity, wind: s.windStrength, fallSpeed: s.fallSpeed,
