@@ -264,6 +264,7 @@ final class PhysicsWorld {
 
     private func spawn(dt: Float) {
         guard !region.isEmpty else { return }
+        if tornado != nil { spawnAccumulator = 0; return }     // the sky stays clear while the tornado works
         let target = targetCount
         guard pool.count < target else { spawnAccumulator = 0; return }
         spawnAccumulator += Float(target) / 12 * dt

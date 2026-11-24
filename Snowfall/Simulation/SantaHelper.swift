@@ -245,9 +245,10 @@ extension PhysicsWorld {
         p.volume = 0
     }
 
-    /// Effect of the tornado on an airborne flake: flakes inside the funnel's catch zone are taken
-    /// into the spiral (the state becomes `.swirling`); flakes nearby are drawn inward and upward.
-    /// Returns the extra acceleration (pt/s²) to apply this step.
+    /// Effect of the tornado on an airborne flake. Santa's magic reaches ALL snow in the air: every
+    /// falling flake homes in on the funnel from anywhere on screen (a velocity-steering pull that
+    /// grows with distance), drops in if it is above the funnel, and is taken into the spiral
+    /// (`.swirling`) once it reaches the catch zone. Returns the extra acceleration (pt/s²).
     func tornadoInfluence(_ p: inout SnowParticle, tornado t: Tornado) -> SIMD2<Float> {
         let h = p.position.y - t.baseY
         guard h > -20 else { return .zero }
@@ -255,10 +256,9 @@ extension PhysicsWorld {
         let axis = t.x + t.lean * (hc / max(t.height, 1))
         let dx = p.position.x - axis
         let coneR = (config.tornadoCoreRadius + hc * config.tornadoSlope) * (0.35 + 0.65 * t.strength)
-        let suck = coneR * 3 + 120 * t.strength
         let adx = abs(dx)
-        guard adx < suck else { return .zero }
-        if h <= t.height, adx < coneR * 1.5 + 30 * t.strength {
+        let catchR = coneR * 1.5 + 30 * t.strength
+        if h <= t.height, adx < catchR {
             p.state = .swirling
             p.stateTime = 0
             p.velocity = SIMD2(p.position.x, rng.float(95...175))     // .x = entry x, .y = rise speed
@@ -269,10 +269,15 @@ extension PhysicsWorld {
             p.mass = min(max(p.opacity, 0.5), 1)                      // base opacity while swirling
             return .zero
         }
-        let f = 1 - adx / suck
-        let inward: Float = dx > 0 ? -1 : 1
-        // Strong inward pull, plus the tornado's own travel so pulled flakes keep up with it.
-        let travel = -config.tornadoSpeed * config.baseDrag
-        return SIMD2((inward * 2400 + travel) * f * t.strength, 260 * f * t.strength)
+        // Homing: steer horizontal velocity toward the axis, faster the farther away it is.
+        let k = 8 * t.strength
+        let ease = t.strength * t.strength * (3 - 2 * t.strength)
+        let desiredVx = -config.tornadoSpeed * ease - min(max(dx * 1.1, -900), 900)   // follow the tornado, close the gap
+        // Also steer vertically toward the middle of the funnel: airborne flakes are carried up (or
+        // down) to it instead of falling to the floor on the way, so they do not settle again.
+        let targetY = t.baseY + max(t.height, 120) * 0.5
+        let desiredVy = min(max((targetY - p.position.y) * 0.9, -260), 260)
+        let ay = (desiredVy - p.velocity.y) * k
+        return SIMD2((desiredVx - p.velocity.x) * k, ay)
     }
 }

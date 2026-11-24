@@ -241,13 +241,74 @@ final class TornadoAirborneTests: XCTestCase {
         XCTAssertEqual(w.pool[idx].state, .swirling)
     }
 
-    func testDistantFlakeIsLeftAlone() {
+    func testDistantFlakeIsEventuallyTaken() {
         let w = tornadoWorld()
         guard let t = w.tornado else { return XCTFail("no tornado") }
-        w.pool.spawn(flake(t.x + 900, t.baseY + 150))
+        w.pool.spawn(flake(t.x + 900, t.baseY + 150))      // far behind the tornado
         let idx = w.pool.count - 1
-        w.step(dt: 1.0 / 120)
-        XCTAssertEqual(w.pool[idx].state, .falling)
+        var caught = false
+        for _ in 0..<(120 * 5) {
+            w.step(dt: 1.0 / 120)
+            if idx < w.pool.count, w.pool[idx].state == .swirling { caught = true; break }
+        }
+        XCTAssertTrue(caught, "Santa's magic pulls in flakes from anywhere on screen")
+    }
+
+    func testFlakeAheadOfTheTornadoIsTakenToo() {
+        let w = tornadoWorld()
+        guard let t = w.tornado else { return XCTFail("no tornado") }
+        w.pool.spawn(flake(t.x - 700, t.baseY + 400))
+        let idx = w.pool.count - 1
+        var caught = false
+        for _ in 0..<(120 * 5) {
+            w.step(dt: 1.0 / 120)
+            if idx < w.pool.count, w.pool[idx].state == .swirling { caught = true; break }
+        }
+        XCTAssertTrue(caught)
+    }
+
+    func testNoNewSnowSpawnsWhileTheTornadoWorks() {
+        var c = SimulationConfiguration(); c.density = 1; c.maxParticles = 400; c.plowAuto = false; c.helper = .santa
+        let w = PhysicsWorld(config: c)
+        w.setRegion(CGRect(x: 0, y: 0, width: 1600, height: 900))
+        w.setSurfaces([CollisionSurface(id: "floor", frame: CGRect(x: 0, y: 0, width: 1600, height: 0), velocity: .zero, kind: .displayBottom)])
+        w.startHelper(.santa)
+        for _ in 0..<(120 * 5) { w.step(dt: 1.0 / 120) }      // tornado now exists
+        XCTAssertNotNil(w.tornado)
+        let falling = { (0..<w.pool.count).filter { w.pool[$0].state == .falling }.count }
+        let a = falling()
+        for _ in 0..<(120 * 2) { w.step(dt: 1.0 / 120) }
+        XCTAssertLessThanOrEqual(falling(), a, "no new flakes while the tornado is active")
+    }
+
+    func testHomingFlakesDoNotRedepositSnowBehindTheTornado() {
+        var c = SimulationConfiguration(); c.density = 1; c.maxParticles = 800; c.plowAuto = false; c.helper = .santa; c.seed = 9
+        let w = PhysicsWorld(config: c)
+        w.setRegion(CGRect(x: 0, y: 0, width: 1600, height: 900))
+        w.setSurfaces([CollisionSurface(id: "floor", frame: CGRect(x: 0, y: 0, width: 1600, height: 0), velocity: .zero, kind: .displayBottom)])
+        w.prewarm()
+        let airborne = (0..<w.pool.count).reduce(Float(0)) { $0 + w.pool[$1].volume }
+        w.startHelper(.santa)
+        while w.isHelperRunning { w.step(dt: 1.0 / 120); w.finishFrame() }
+        for _ in 0..<(120 * 2) { w.step(dt: 1.0 / 120) }
+        let floor = w.state(forSurface: "floor")!.field.volume
+        print("HOMING floor volume after run: \(floor) of \(airborne) airborne")
+        XCTAssertLessThan(floor, airborne * 0.12, "snow must not pile up again behind the tornado")
+    }
+
+    func testTheSkyIsClearedByTheEndOfTheSweep() {
+        var c = SimulationConfiguration(); c.density = 1; c.maxParticles = 800; c.plowAuto = false; c.helper = .santa; c.seed = 5
+        let w = PhysicsWorld(config: c)
+        w.setRegion(CGRect(x: 0, y: 0, width: 1600, height: 900))
+        w.setSurfaces([CollisionSurface(id: "floor", frame: CGRect(x: 0, y: 0, width: 1600, height: 0), velocity: .zero, kind: .displayBottom)])
+        w.prewarm()
+        let before = (0..<w.pool.count).filter { w.pool[$0].state == .falling }.count
+        XCTAssertGreaterThan(before, 200)
+        w.startHelper(.santa)
+        while w.tornado == nil && w.isHelperRunning { w.step(dt: 1.0 / 120) }
+        while w.tornado != nil { w.step(dt: 1.0 / 120) }       // until the tornado leaves the screen
+        let after = (0..<w.pool.count).filter { w.pool[$0].state == .falling }.count
+        XCTAssertLessThan(Double(after), Double(before) * 0.05, "airborne snow is taken (before \(before), after \(after))")
     }
 
     func testNearbyFlakeIsDrawnTowardTheAxisThenCaught() {

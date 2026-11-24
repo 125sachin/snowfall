@@ -49,8 +49,9 @@ minutes when it has snow to clear (the JCB needs floor snow, Santa accepts any s
 **Santa:** flies in from the upper right, flourishes a wand (glitter particles at the tip), conjures a tornado at the right edge that
 sweeps right → left across the whole width. The funnel is a cone of orbiting particles (kinematic, phase/radius per particle, near
 side brighter/larger). Every surface whose top edge lies inside the funnel (floor and window tops) is swept under the funnel's catch
-zone; lifted snow becomes swirling clusters that rise, then are flung off at the top (their volume is counted as lost). Falling (not yet settled) flakes are taken too: inside the funnel's catch zone they become swirling particles; nearby ones are pulled inward
-and carried along with the tornado first. Flakes the tornado has thrown out are marked (orbitRadius = -1) so they are not re-captured. Santa follows
+zone; lifted snow becomes swirling clusters that rise, then are flung off at the top (their volume is counted as lost). All airborne (not yet settled) flakes on screen are taken too: while the tornado is active every falling flake homes in on the funnel (velocity steering
+that follows the tornado and is also steered vertically to mid-funnel so it does not land on the way), becomes a swirling particle inside the catch zone, and
+new snow does not spawn until the tornado has left. Flakes the tornado has thrown out are marked (orbitRadius = -1) so they are not re-captured. Santa follows
 behind, then flies off.
 **Adding a helper:** see the checklist on `HelperKind`.
 
