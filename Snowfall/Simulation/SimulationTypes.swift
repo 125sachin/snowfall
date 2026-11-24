@@ -110,8 +110,8 @@ struct SimulationConfiguration: Sendable, Equatable {
     var windStrength: Float = 0.25
     var fallSpeedScale: Float = 1
     var opacityScale: Float = 1
-    var minRadius: Float = 1.2
-    var maxRadius: Float = 3.8
+    var minRadius: Float = 2.0
+    var maxRadius: Float = 5.6
     /// Extra pool slots reserved for displaced clusters and edge overflow.
     var spawnReserve = 256
 
@@ -123,7 +123,7 @@ struct SimulationConfiguration: Sendable, Equatable {
     var displayMaxDepth: Float = 30
     var windowMaxDepth: Float = 14
     /// Snow volume = compaction · π r².
-    var compaction: Float = 0.35
+    var compaction: Float = 0.18
 
     var windowPhysicsEnabled = false
     /// Window speed (pt/s) below which snow is fully carried along.

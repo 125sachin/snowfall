@@ -8,7 +8,7 @@ enum ShaderSource {
 
     struct ParticleInstance { float2 position; float radius; float rotation; float opacity; float seed; };
     struct ViewUniforms { float2 origin; float2 size; };
-    struct ParticleOut { float4 position [[position]]; float2 uv; float opacity; float seed; float radius; };
+    struct ParticleOut { float4 position [[position]]; float2 uv; float opacity; float seed; float radius; float rot; };
 
     vertex ParticleOut particle_vertex(uint vid [[vertex_id]], uint iid [[instance_id]],
                                        constant ParticleInstance *inst [[buffer(0)]],
@@ -16,29 +16,64 @@ enum ShaderSource {
         const float2 corners[4] = { float2(-1,-1), float2(1,-1), float2(-1,1), float2(1,1) };
         ParticleInstance p = inst[iid];
         float2 c = corners[vid];
-        float extent = p.radius * 1.7 + 0.75;
+        float extent = p.radius * 1.5 + 0.75;
         float2 local = p.position - u.origin + c * extent;
         ParticleOut o;
         o.position = float4((local / u.size) * 2.0 - 1.0, 0.0, 1.0);
         o.uv = c * (extent / p.radius);
-        o.opacity = p.opacity; o.seed = p.seed; o.radius = p.radius;
+        o.opacity = p.opacity; o.seed = p.seed; o.radius = p.radius; o.rot = p.rotation;
         return o;
     }
 
+    static float segDist(float2 p, float2 a, float2 b) {
+        float2 pa = p - a, ba = b - a;
+        float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+        return length(pa - ba * h);
+    }
+
+    // Snow crystal: six-fold symmetric. The plane is folded into one 30-degree wedge so only a
+    // single arm (along +x) and its branches are described; the fold mirrors it into all six arms.
     fragment float4 particle_fragment(ParticleOut in [[stage_in]]) {
-        float cs = cos(in.seed * 6.2831), sn = sin(in.seed * 6.2831);
+        float spin = in.rot + in.seed * 6.2831;
+        float cs = cos(spin), sn = sin(spin);
         float2 uv = float2(in.uv.x * cs - in.uv.y * sn, in.uv.x * sn + in.uv.y * cs);
-        uv.x *= 1.0 + 0.18 * sin(in.seed * 40.0);                 // slight per-flake ellipse
         float r = length(uv);
-        if (in.radius > 2.4) {                                      // large flakes: faint six-lobed edge
-            r += 0.10 * cos(6.0 * atan2(uv.y, uv.x)) * smoothstep(0.3, 0.9, r);
+
+        if (in.radius < 1.7) {                       // too small to resolve: soft dot
+            float a = smoothstep(1.0, 0.35, r) * in.opacity;
+            return float4(float3(1.0) * a, a);
         }
-        float a = smoothstep(1.0, 0.4, r) * in.opacity;
-        float3 body = mix(float3(1.0), float3(0.80, 0.88, 0.98), smoothstep(0.35, 1.0, r) * 0.55);
-        // Faint cool halo so flakes stay visible over white windows.
-        float halo = 0.16 * smoothstep(1.7, 0.85, r) * (1.0 - a) * in.opacity;
-        float3 haloColor = float3(0.40, 0.50, 0.66);
-        return float4(body * a + haloColor * halo, a + halo);
+
+        float aa = max(fwidth(r), 0.03);
+        float s1 = fract(in.seed * 7.13), s2 = fract(in.seed * 13.7), s3 = fract(in.seed * 3.3);
+
+        const float sector = 1.0471976;              // 60 degrees
+        float ang = fmod(atan2(uv.y, uv.x) + 6.2831853, sector);
+        ang = min(ang, sector - ang);                // 0..30 degrees from the nearest arm axis
+        float2 q = float2(cos(ang), sin(ang)) * r;   // arm lies along +x
+
+        float w = 0.075 + 0.04 * s1;
+        float d = segDist(q, float2(0.0, 0.0), float2(0.97, 0.0)) - w;
+        const float2 n30 = float2(0.8660254, 0.5);   // hexagon edge normal (vertices on the arms)
+        if (s3 > 0.74) {                             // hexagonal plate with a hollow centre
+            float hex = dot(q, n30);
+            d = min(d, max(hex - 0.72, -(hex - 0.44)));
+            d = min(d, segDist(q, float2(0.0, 0.0), float2(0.5, 0.0)) - w * 0.6);
+        } else {                                     // dendrite: side branches + hexagonal core
+            const float2 dir = float2(0.5, 0.8660254);
+            float t1 = 0.36 + 0.10 * s2, t2 = 0.63 + 0.08 * s1;
+            float l1 = 0.30 + 0.10 * s1, l2 = 0.20 + 0.08 * s2;
+            d = min(d, segDist(q, float2(t1, 0.0), float2(t1, 0.0) + dir * l1) - w * 0.85);
+            d = min(d, segDist(q, float2(t2, 0.0), float2(t2, 0.0) + dir * l2) - w * 0.75);
+            d = min(d, dot(q, n30) - 0.18);
+        }
+
+        float a = clamp((1.0 - smoothstep(-aa, aa, d)) * 1.15, 0.0, 1.0) * in.opacity;
+        // Icy shading: bright core, cooler blue toward the tips.
+        float3 col = mix(float3(1.0), float3(0.68, 0.84, 1.0), smoothstep(0.15, 0.95, r));
+        // Faint cool halo so crystals stay visible over white windows.
+        float halo = 0.22 * (1.0 - smoothstep(0.0, 0.22, max(d, 0.0))) * (1.0 - a) * in.opacity;
+        return float4(col * a + float3(0.38, 0.5, 0.68) * halo, a + halo);
     }
 
     struct DebugRect { float4 rect; float4 color; };

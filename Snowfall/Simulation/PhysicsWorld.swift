@@ -262,7 +262,7 @@ final class PhysicsWorld {
 
     func spawnOne(y: Float) {
         let u = rng.float(0...1)
-        let r = config.minRadius + (config.maxRadius - config.minRadius) * pow(u, 2.2)
+        let r = config.minRadius + (config.maxRadius - config.minRadius) * pow(u, 1.6)
         let x = rng.float((Float(region.minX) - 300)...(Float(region.maxX) + 300))
         let mass = 0.8 + 0.5 * (r - config.minRadius) / max(config.maxRadius - config.minRadius, 0.1)
         let p = SnowParticle(position: SIMD2(x, y), velocity: SIMD2(0, -50), radius: r,
@@ -333,7 +333,7 @@ final class PhysicsWorld {
                 var sp = SnowParticle.blank
                 sp.position = SIMD2(newX - 2, p.groundY + rng.float(2...(4 + p.pileHeight)))
                 sp.velocity = SIMD2(-p.speed * rng.float(0.4...1.1), rng.float(50...140))
-                sp.radius = rng.float(1...2.2); sp.mass = 0.9; sp.opacity = 0.85; sp.volume = 0
+                sp.radius = rng.float(1.2...2.6); sp.mass = 0.9; sp.opacity = 0.85; sp.volume = 0
                 sp.state = .displaced
                 pool.spawn(sp)
             }
