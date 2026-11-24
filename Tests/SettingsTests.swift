@@ -55,10 +55,39 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(SettingsStore(defaults: d).settings, .default)
     }
 
-    func testMissingKeysInOlderPayloadFail_gracefully() {
-        // A partial payload must not crash; it falls back to defaults.
+    func testOlderPayloadGetsDefaultsForNewKeys() {
+        // A v1 payload lacking newer keys decodes with defaults and is migrated to the current version.
         let d = freshDefaults()
         d.set(Data("{\"version\":1}".utf8), forKey: SettingsStore.defaultsKey)
         XCTAssertEqual(SettingsStore(defaults: d).settings, .default)
+    }
+}
+
+@MainActor
+final class SettingsRangeTests: XCTestCase {
+    func testNewFieldRangesClamp() {
+        var s = SnowfallSettings()
+        s.maxParticles = 99999; s.fallSpeed = 0; s.pointerRadius = 1; s.particleOpacity = 5
+        s.disabledDisplays = ["b", "a", "b"]
+        let v = s.validated()
+        XCTAssertEqual(v.maxParticles, 3000)
+        XCTAssertEqual(v.fallSpeed, 0.5)
+        XCTAssertEqual(v.pointerRadius, 40)
+        XCTAssertEqual(v.particleOpacity, 1)
+        XCTAssertEqual(v.disabledDisplays, ["a", "b"])
+    }
+
+    func testV1PayloadKeepsKnownValues() throws {
+        let json = #"{"version":1,"particleDensity":0.9,"windStrength":0.1}"#
+        let s = try JSONDecoder().decode(SnowfallSettings.self, from: Data(json.utf8))
+        XCTAssertEqual(SettingsStore.migrate(s).validated().particleDensity, 0.9)
+        XCTAssertEqual(s.validated().version, SnowfallSettings.currentVersion)
+    }
+
+    func testSimulationSettingsMapping() {
+        var ss = SimulationSettings(); ss.lowPower = true; ss.maxDepth = 1
+        let c = ss.configuration(base: SimulationConfiguration(), densityScale: 1)
+        XCTAssertEqual(c.densityScale, 0.5)
+        XCTAssertEqual(c.displayMaxDepth, 60)
     }
 }

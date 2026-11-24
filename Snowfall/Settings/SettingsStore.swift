@@ -16,8 +16,12 @@ final class SettingsStore {
                 return
             }
             persist()
+            onChange?(valid)
         }
     }
+
+    /// Invoked (on the main actor) after every validated change.
+    @ObservationIgnored var onChange: ((SnowfallSettings) -> Void)?
 
     /// Non-nil when the last launch-at-login change failed.
     private(set) var launchAtLoginError: String?

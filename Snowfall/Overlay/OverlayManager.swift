@@ -1,0 +1,109 @@
+import AppKit
+import MetalKit
+
+/// Owns one overlay window (and renderer) per enabled display and reconciles them with display
+/// changes. Rendering state lives here; physics and tracking are separate.
+@MainActor
+final class OverlayManager {
+    private struct Overlay {
+        let window: OverlayWindow
+        let view: SnowfallView
+        let renderer: MetalRenderer
+    }
+
+    private var overlays: [UInt32: Overlay] = [:]
+    private let simulation: SimulationCoordinator
+    private let monitor: PerformanceMonitor
+    private var fps = 60
+    private var paused = false
+    private var showBorders = false
+
+    /// Called when Metal setup fails so the UI can say why snow is unavailable.
+    var onRendererFailure: ((String) -> Void)?
+
+    init(simulation: SimulationCoordinator, monitor: PerformanceMonitor) {
+        self.simulation = simulation
+        self.monitor = monitor
+    }
+
+    var overlayCount: Int { overlays.count }
+
+    /// Creates, updates and removes overlays so exactly the given displays have one.
+    func reconcile(displays: [DisplayDescriptor]) {
+        let wanted = Dictionary(uniqueKeysWithValues: displays.map { ($0.id, $0) })
+        for id in overlays.keys where wanted[id] == nil { remove(id) }
+        for d in displays {
+            if let o = overlays[d.id] {
+                if o.window.frame != d.frame { o.window.setFrame(d.frame, display: false) }
+                o.renderer.displayFrame = d.frame
+            } else {
+                create(d)
+            }
+        }
+        applyState()
+    }
+
+    func setState(fps: Int, paused: Bool, showBorders: Bool) {
+        self.fps = fps; self.paused = paused; self.showBorders = showBorders
+        applyState()
+    }
+
+    func hideAll() {
+        for o in overlays.values { o.view.isPaused = true; o.window.orderOut(nil) }
+    }
+
+    /// Redraws once while paused so changes such as Clear Snow become visible immediately.
+    func refreshFrame() {
+        guard paused else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            MainActor.assumeIsolated { self?.overlays.values.forEach { $0.view.draw() } }
+        }
+    }
+
+    func tearDown() {
+        for id in Array(overlays.keys) { remove(id) }
+    }
+
+    private func create(_ d: DisplayDescriptor) {
+        let window = OverlayWindow(display: d)
+        let view = SnowfallView(frame: CGRect(origin: .zero, size: d.frame.size))
+        view.autoresizingMask = [.width, .height]
+        view.configureTransparency()
+        do {
+            let provider = simulation
+            let renderer = try MetalRenderer(view: view, displayFrame: d.frame, monitor: monitor) {
+                provider.latestSnapshot()
+            }
+            window.contentView = view
+            window.setFrame(d.frame, display: false)
+            overlays[d.id] = Overlay(window: window, view: view, renderer: renderer)
+            SnowfallLogger.overlay.info("overlay created for display \(d.id) scale \(d.scale)")
+        } catch {
+            SnowfallLogger.render.error("renderer failed: \(error.localizedDescription)")
+            onRendererFailure?(error.localizedDescription)
+        }
+    }
+
+    private func remove(_ id: UInt32) {
+        guard let o = overlays.removeValue(forKey: id) else { return }
+        o.view.isPaused = true
+        o.view.delegate = nil
+        o.window.orderOut(nil)
+        o.window.contentView = nil
+        o.window.close()
+    }
+
+    private func applyState() {
+        for o in overlays.values {
+            o.view.preferredFramesPerSecond = fps
+            o.renderer.drawsDisplayBorder = showBorders
+            o.window.orderFrontRegardless()
+            if paused {
+                o.view.isPaused = true
+                o.view.draw()   // keep the last frame visible
+            } else {
+                o.view.isPaused = false
+            }
+        }
+    }
+}
