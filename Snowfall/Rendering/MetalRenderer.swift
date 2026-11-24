@@ -42,6 +42,7 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
     private let wheelTexture: MTLTexture?
     private let santaTexture: MTLTexture?
     private let wandTexture: MTLTexture?
+    private let ironTextures: IronManSprites.Textures?
     private let inFlight = DispatchSemaphore(value: 2)
     private var ring = 0
     private var particleBuffers: [MTLBuffer] = []
@@ -94,6 +95,7 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         bodyTexture = tex?.body; wheelTexture = tex?.wheel
         let santa = SantaSprites.makeTextures(device: device)
         santaTexture = santa?.body; wandTexture = santa?.wand
+        ironTextures = IronManSprites.makeTextures(device: device)
 
         func buf(_ bytes: Int) throws -> MTLBuffer {
             guard let b = device.makeBuffer(length: bytes, options: .storageModeShared) else {
@@ -186,6 +188,9 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
             if let body = santaTexture, let wand = wandTexture {
                 for sa in snap.santas { drawSanta(sa, body: body, wand: wand, encoder: enc, uniforms: &u, frame: f) }
             }
+            if let tex = ironTextures {
+                for m in snap.ironMen { drawIronMan(m, textures: tex, encoder: enc, uniforms: &u, frame: f) }
+            }
             if pc > 0 {
                 enc.setRenderPipelineState(particlePipeline)
                 enc.setVertexBuffer(pBuf, offset: 0, index: 0)
@@ -212,6 +217,33 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         enc.setVertexBytes(&u, length: MemoryLayout<ViewUniforms>.stride, index: 1)
         enc.setFragmentTexture(tex, index: 0)
         enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+    }
+
+    private func drawIronMan(_ m: RenderIronMan, textures t: IronManSprites.Textures,
+                             encoder enc: MTLRenderCommandEncoder, uniforms u: inout ViewUniforms, frame f: CGRect) {
+        let k = IronManMetrics.scale
+        let w = IronManMetrics.width * k, h = IronManMetrics.height * k
+        let visibleBody = m.x + w > Float(f.minX) && m.x - w < Float(f.maxX) && m.y + h > Float(f.minY) && m.y < Float(f.maxY)
+        enc.setRenderPipelineState(spritePipeline)
+        if m.firing {
+            // Two beams (soft glow underneath, bright core on top), each drawn if it touches this display.
+            for b in [m.spot, m.spot2] {
+                let a = m.eye
+                let minX = min(a.x, b.x), maxX = max(a.x, b.x), minY = min(a.y, b.y), maxY = max(a.y, b.y)
+                guard maxX > Float(f.minX), minX < Float(f.maxX), maxY > Float(f.minY), minY < Float(f.maxY) else { continue }
+                let d = b - a
+                let len = simd_length(d)
+                let ang = atan2(d.y, d.x)
+                let mid = (a + b) / 2
+                drawSprite(t.beam, encoder: enc, uniforms: &u, cx: mid.x, cy: mid.y, w: len, h: 22 * m.intensity, rot: ang)
+                drawSprite(t.beam, encoder: enc, uniforms: &u, cx: mid.x, cy: mid.y, w: len, h: 7 * m.intensity, rot: ang)
+                drawSprite(t.glow, encoder: enc, uniforms: &u, cx: b.x, cy: b.y, w: 78 * m.intensity, h: 78 * m.intensity, rot: 0)
+            }
+            drawSprite(t.glow, encoder: enc, uniforms: &u, cx: m.eye.x, cy: m.eye.y, w: 30 * m.intensity, h: 30 * m.intensity, rot: 0)
+        }
+        if visibleBody {
+            drawSprite(t.body, encoder: enc, uniforms: &u, cx: m.x, cy: m.y + m.bob + h / 2, w: w, h: h, rot: IronManMetrics.tilt)
+        }
     }
 
     private func drawSanta(_ s: RenderSanta, body: MTLTexture, wand: MTLTexture,

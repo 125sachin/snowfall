@@ -9,6 +9,7 @@ enum ParticleState: UInt8, Sendable {
     case displaced   // snow shed from a moving/closing window or an overflowing edge
     case swirling    // caught in a tornado (kinematic orbit, see SantaHelper)
     case sparkle     // short-lived magic glitter, no gravity
+    case steam       // puff of steam from melting snow: rises, expands, fades
 }
 
 struct SnowParticle: Sendable {
@@ -148,6 +149,9 @@ struct SimulationConfiguration: Sendable, Equatable {
     var tornadoSlope: Float = 0.30
     var tornadoEmitRate: Float = 170
     var tornadoClusterVolume: Float = 70
+    var ironManSpeed: Float = 130
+    var laserMeltRate: Float = 450       // pt of depth per second at the beam centre
+    var laserSigma: Float = 14           // beam spot radius (Gaussian σ, pt)
 
     // Snow plow (JCB). Units: pt, s. Terminal speed unloaded = engine / drag = 90 pt/s.
     var plowAuto = true

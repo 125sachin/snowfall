@@ -34,6 +34,11 @@ enum ShaderSource {
     // Snow crystal: six-fold symmetric. The plane is folded into one 30-degree wedge so only a
     // single arm (along +x) and its branches are described; the fold mirrors it into all six arms.
     fragment float4 particle_fragment(ParticleOut in [[stage_in]]) {
+        if (in.seed >= 2.0) {                         // steam puff: soft, warm-white, no crystal
+            float rr = length(in.uv);
+            float a = smoothstep(1.0, 0.0, rr) * in.opacity * 0.75;
+            return float4(float3(1.0, 0.96, 0.92) * a, a);
+        }
         float spin = in.rot + in.seed * 6.2831;
         float cs = cos(spin), sn = sin(spin);
         float2 uv = float2(in.uv.x * cs - in.uv.y * sn, in.uv.x * sn + in.uv.y * cs);

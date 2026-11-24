@@ -39,6 +39,17 @@ struct RenderSanta: Sendable {
     var wandAngle: Float  // radians; 0 = pointing left, negative = raised
 }
 
+struct RenderIronMan: Sendable {
+    var x: Float          // sprite centre x
+    var y: Float          // sprite bottom y
+    var bob: Float
+    var firing: Bool
+    var eye: SIMD2<Float>
+    var spot: SIMD2<Float>
+    var spot2: SIMD2<Float>
+    var intensity: Float
+}
+
 struct SimulationStats: Sendable, Equatable {
     var particleCount = 0
     var surfaceCount = 0
@@ -59,5 +70,6 @@ struct RenderSnapshot: Sendable {
     var debugRects: [DebugRect] = []
     var vehicles: [RenderVehicle] = []
     var santas: [RenderSanta] = []
+    var ironMen: [RenderIronMan] = []
     var stats = SimulationStats()
 }

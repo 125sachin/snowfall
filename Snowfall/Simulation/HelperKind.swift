@@ -11,17 +11,19 @@ import Foundation
 enum HelperKind: String, Codable, CaseIterable, Identifiable, Sendable {
     case jcb
     case santa
+    case ironMan
     case random
 
     var id: String { rawValue }
 
     /// Helpers that can actually run. `.random` chooses one of these.
-    static let concrete: [HelperKind] = [.jcb, .santa]
+    static let concrete: [HelperKind] = [.jcb, .santa, .ironMan]
 
     var label: String {
         switch self {
         case .jcb: "JCB snow plow"
         case .santa: "Santa's magic tornado"
+        case .ironMan: "Iron Man's eye lasers"
         case .random: "Surprise me"
         }
     }
@@ -30,6 +32,7 @@ enum HelperKind: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .jcb: "JCB"
         case .santa: "Santa"
+        case .ironMan: "Iron Man"
         case .random: "Helper"
         }
     }
@@ -40,6 +43,8 @@ enum HelperKind: String, Codable, CaseIterable, Identifiable, Sendable {
             "A JCB drives right to left along the bottom of the screen, pushing settled snow ahead of its blade. It slows under a heavy load, spills what doesn't fit, and dumps the rest off the edge."
         case .santa:
             "Santa flies in and waves a magic wand. A tornado spins up and sweeps across the screen, lifting snow off the bottom and off window tops, whirling it up and flinging it away."
+        case .ironMan:
+            "Iron Man flies in from the right and sweeps his eye lasers ahead of him as he heads left, melting settled snow into steam and vaporizing the flakes his beam crosses."
         case .random:
             "A different helper is chosen each time."
         }

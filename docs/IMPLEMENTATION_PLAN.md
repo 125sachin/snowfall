@@ -53,6 +53,10 @@ zone; lifted snow becomes swirling clusters that rise, then are flung off at the
 streams into the funnel, so the right side is empty as it passes; snow AHEAD of it is drawn in only within reach (320 pt) and otherwise taken on arrival.
 Thrown-out flakes always fly left and fade away. New snow does not spawn until the tornado has left. Flakes the tornado has thrown out are marked (orbitRadius = -1) so they are not re-captured. Santa follows
 behind, then flies off.
+**Iron Man:** flies in from the right, tilted forward, and heads left at 130 pt/s, adjusting altitude to clear the tallest window ahead. Two eye beams
+sweep ahead of him out of phase: one lands on the highest surface under its target (a window top), the other on the floor. Heat model: depth melted per
+second = 450 · exp(−d²/2σ²) (σ = 14 pt) around the spot, so melting is local and needs a few passes for deep snow; melted volume is counted as lost and
+produces rising, expanding, fading steam puffs. Airborne flakes crossing a beam segment are vaporized (their snow is melted too).
 **Adding a helper:** see the checklist on `HelperKind`.
 
 ## Known limitations

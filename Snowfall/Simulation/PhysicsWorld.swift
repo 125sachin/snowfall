@@ -52,6 +52,7 @@ final class PhysicsWorld {
     private(set) var plow: PlowVehicle?
     var santa: SantaRun?
     var tornado: Tornado?
+    var ironMan: IronManRun?
     var lastHelperEnd: Double = 0
     private var plowBlockedState: SurfaceState?
     private var plowBlockedEdge: Int?
@@ -146,7 +147,7 @@ final class PhysicsWorld {
     }
 
     var isPlowRunning: Bool { plow != nil }
-    var isHelperRunning: Bool { plow != nil || santa != nil || tornado != nil }
+    var isHelperRunning: Bool { plow != nil || santa != nil || tornado != nil || ironMan != nil }
 
     func clearSnow() {
         for s in ordered { s.field.clear() }
@@ -168,8 +169,13 @@ final class PhysicsWorld {
         var i = 0
         while i < pool.count {
             var p = ptr[i]
-            if p.state == .swirling || p.state == .sparkle {
-                let keep = p.state == .swirling ? stepSwirl(&p, dt: dt) : stepSparkle(&p, dt: dt)
+            if p.state == .swirling || p.state == .sparkle || p.state == .steam {
+                let keep: Bool
+                switch p.state {
+                case .swirling: keep = stepSwirl(&p, dt: dt)
+                case .sparkle: keep = stepSparkle(&p, dt: dt)
+                default: keep = stepSteam(&p, dt: dt)
+                }
                 if keep { ptr[i] = p; i += 1 } else { pool.remove(at: i) }
                 continue
             }
@@ -212,6 +218,7 @@ final class PhysicsWorld {
         stepPlow(dt: dt)
         stepSanta(dt: dt)
         stepTornado(dt: dt)
+        stepIronMan(dt: dt)
     }
 
     /// Returns true when the particle came to rest (and should be removed).
@@ -329,13 +336,14 @@ final class PhysicsWorld {
         switch k {
         case .jcb: startPlow()
         case .santa: startSanta()
+        case .ironMan: startIronMan()
         case .random: break
         }
     }
 
     /// Sends the plow in from the right edge. No-op if one is already running.
     func startPlow() {
-        guard plow == nil, santa == nil, !region.isEmpty else { return }
+        guard plow == nil, santa == nil, ironMan == nil, !region.isEmpty else { return }
         let x = Float(region.maxX) + 20
         let ground = floorState(at: Float(region.maxX) - 1)?.surface.topY ?? Float(region.minY)
         plow = PlowVehicle(bladeX: x, groundY: ground)
@@ -477,10 +485,14 @@ final class PhysicsWorld {
         for i in 0..<n {
             let p = pool[i]
             s.particles.append(RenderParticle(position: p.position, radius: p.radius, rotation: p.rotation,
-                                              opacity: p.opacity, seed: Float(i & 255) / 255))
+                                              opacity: p.opacity, seed: Float(i & 255) / 255 + (p.state == .steam ? 2 : 0)))
         }
         s.vehicles.removeAll(keepingCapacity: true)
         s.santas.removeAll(keepingCapacity: true)
+        s.ironMen.removeAll(keepingCapacity: true)
+        if let m = ironMan {
+            s.ironMen.append(RenderIronMan(x: m.x, y: m.y, bob: m.bob, firing: m.firing, eye: m.eyeWorld, spot: m.spot, spot2: m.spot2, intensity: m.intensity))
+        }
         if let sa = santa {
             s.santas.append(RenderSanta(x: sa.x, y: sa.y, bob: sin(sa.totalTime * 2.2) * 5, wandAngle: sa.wandAngle))
         }

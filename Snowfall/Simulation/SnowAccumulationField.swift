@@ -146,6 +146,14 @@ struct SnowAccumulationField: Sendable, Equatable {
         return removed
     }
 
+    /// Melts `depth` off one bin (never below zero). Returns the depth actually removed.
+    mutating func melt(bin i: Int, depth: Float) -> Float {
+        guard i >= 0, i < binCount else { return 0 }
+        let take = min(max(depth, 0), heights[i])
+        heights[i] -= take
+        return take
+    }
+
     func binIndex(atLocalX x: Float) -> Int { min(max(Int(x / binWidth), 0), binCount - 1) }
 
     mutating func clear() {
