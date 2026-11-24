@@ -212,3 +212,97 @@ final class HelperTests: XCTestCase {
         XCTAssertFalse(HelperKind.concrete.contains(.random))
     }
 }
+
+/// The tornado also takes snow that is still in the air.
+final class TornadoAirborneTests: XCTestCase {
+    private func tornadoWorld() -> PhysicsWorld {
+        var c = SimulationConfiguration(); c.density = 0; c.plowAuto = false; c.helper = .santa; c.windStrength = 0; c.turbulence = 0
+        let w = PhysicsWorld(config: c)
+        w.setRegion(CGRect(x: 0, y: 0, width: 1600, height: 900))
+        w.setSurfaces([CollisionSurface(id: "floor", frame: CGRect(x: 0, y: 0, width: 1600, height: 0), velocity: .zero, kind: .displayBottom)])
+        w.startHelper(.santa)
+        for _ in 0..<(120 * 7) where w.tornado == nil || (w.tornado?.strength ?? 0) < 1 { w.step(dt: 1.0 / 120) }
+        for _ in 0..<(120 * 2) { w.step(dt: 1.0 / 120) }       // fully formed
+        return w
+    }
+
+    private func flake(_ x: Float, _ y: Float) -> SnowParticle {
+        var p = SnowParticle.blank
+        p.position = SIMD2(x, y); p.velocity = SIMD2(0, -60); p.mass = 1; p.radius = 3; p.opacity = 0.9; p.volume = 5
+        return p
+    }
+
+    func testFallingFlakeInsideTheFunnelIsTaken() {
+        let w = tornadoWorld()
+        guard let t = w.tornado else { return XCTFail("no tornado") }
+        w.pool.spawn(flake(t.x + 8, t.baseY + 150))
+        let idx = w.pool.count - 1
+        w.step(dt: 1.0 / 120)
+        XCTAssertEqual(w.pool[idx].state, .swirling)
+    }
+
+    func testDistantFlakeIsLeftAlone() {
+        let w = tornadoWorld()
+        guard let t = w.tornado else { return XCTFail("no tornado") }
+        w.pool.spawn(flake(t.x + 900, t.baseY + 150))
+        let idx = w.pool.count - 1
+        w.step(dt: 1.0 / 120)
+        XCTAssertEqual(w.pool[idx].state, .falling)
+    }
+
+    func testNearbyFlakeIsDrawnTowardTheAxisThenCaught() {
+        let w = tornadoWorld()
+        guard let t = w.tornado else { return XCTFail("no tornado") }
+        let startDX: Float = 170
+        w.pool.spawn(flake(t.x + startDX, t.baseY + 250))
+        let idx = w.pool.count - 1
+        var caught = false
+        for _ in 0..<(120 * 3) {
+            w.step(dt: 1.0 / 120)
+            if idx < w.pool.count, w.pool[idx].state == .swirling { caught = true; break }
+        }
+        XCTAssertTrue(caught, "suction should pull a nearby flake into the funnel")
+    }
+
+    func testFlakeAboveTheFunnelIsPulledIn() {
+        let w = tornadoWorld()
+        guard let t = w.tornado else { return XCTFail("no tornado") }
+        let h = t.baseY + t.height + 200
+        w.pool.spawn(flake(t.x + 120, h))
+        let idx = w.pool.count - 1
+        let before = abs(w.pool[idx].position.x - t.x)
+        for _ in 0..<60 { w.step(dt: 1.0 / 120) }
+        guard idx < w.pool.count else { return }
+        let after = abs(w.pool[idx].position.x - (w.tornado?.x ?? t.x))
+        XCTAssertLessThan(after, before, "moves toward the axis (got \(after) from \(before))")
+    }
+
+    func testThrownOutFlakesAreNotRecaptured() {
+        let w = tornadoWorld()
+        guard let t = w.tornado else { return XCTFail("no tornado") }
+        var p = flake(t.x + 5, t.baseY + 100)
+        p.state = .displaced; p.orbitRadius = -1; p.volume = 0
+        w.pool.spawn(p)
+        let idx = w.pool.count - 1
+        w.step(dt: 1.0 / 120)
+        XCTAssertEqual(w.pool[idx].state, .displaced)
+    }
+
+    func testFallingSnowIsClearedDuringARun() {
+        var c = SimulationConfiguration(); c.density = 1; c.maxParticles = 600; c.plowAuto = false; c.helper = .santa; c.seed = 11
+        let w = PhysicsWorld(config: c)
+        w.setRegion(CGRect(x: 0, y: 0, width: 1600, height: 900))
+        w.setSurfaces([CollisionSurface(id: "floor", frame: CGRect(x: 0, y: 0, width: 1600, height: 0), velocity: .zero, kind: .displayBottom)])
+        w.prewarm()
+        let airborneBefore = w.pool.count
+        w.startHelper(.santa)
+        var swirled = 0
+        for _ in 0..<(120 * 20) {
+            w.step(dt: 1.0 / 120)
+            swirled = max(swirled, (0..<w.pool.count).filter { w.pool[$0].state == .swirling && w.pool[$0].volume > 0 }.count)
+        }
+        XCTAssertGreaterThan(airborneBefore, 100)
+        XCTAssertGreaterThan(swirled, 5, "falling flakes with snow volume get taken into the funnel")
+        XCTAssertLessThanOrEqual(w.pool.count, w.pool.capacity)
+    }
+}

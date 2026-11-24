@@ -240,7 +240,39 @@ extension PhysicsWorld {
         p.radius = p.baseRadius
         p.opacity = max(p.opacity, 0.7)
         p.mass = 1.3
+        p.orbitRadius = -1                 // marks "already thrown out": the tornado ignores it from now on
         totals.lostVolume += p.volume
         p.volume = 0
+    }
+
+    /// Effect of the tornado on an airborne flake: flakes inside the funnel's catch zone are taken
+    /// into the spiral (the state becomes `.swirling`); flakes nearby are drawn inward and upward.
+    /// Returns the extra acceleration (pt/s²) to apply this step.
+    func tornadoInfluence(_ p: inout SnowParticle, tornado t: Tornado) -> SIMD2<Float> {
+        let h = p.position.y - t.baseY
+        guard h > -20 else { return .zero }
+        let hc = min(max(h, 0), t.height)
+        let axis = t.x + t.lean * (hc / max(t.height, 1))
+        let dx = p.position.x - axis
+        let coneR = (config.tornadoCoreRadius + hc * config.tornadoSlope) * (0.35 + 0.65 * t.strength)
+        let suck = coneR * 3 + 120 * t.strength
+        let adx = abs(dx)
+        guard adx < suck else { return .zero }
+        if h <= t.height, adx < coneR * 1.5 + 30 * t.strength {
+            p.state = .swirling
+            p.stateTime = 0
+            p.velocity = SIMD2(p.position.x, rng.float(95...175))     // .x = entry x, .y = rise speed
+            p.orbitPhase = dx >= 0 ? rng.float(-0.8...0.8) : rng.float(2.3...3.9)
+            p.orbitRadius = rng.float(0.55...1.35)
+            p.angularVelocity = config.tornadoOmega * rng.float(0.8...1.25)
+            p.baseRadius = p.radius
+            p.mass = min(max(p.opacity, 0.5), 1)                      // base opacity while swirling
+            return .zero
+        }
+        let f = 1 - adx / suck
+        let inward: Float = dx > 0 ? -1 : 1
+        // Strong inward pull, plus the tornado's own travel so pulled flakes keep up with it.
+        let travel = -config.tornadoSpeed * config.baseDrag
+        return SIMD2((inward * 2400 + travel) * f * t.strength, 260 * f * t.strength)
     }
 }

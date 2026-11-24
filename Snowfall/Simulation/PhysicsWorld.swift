@@ -174,6 +174,10 @@ final class PhysicsWorld {
                 continue
             }
             var a = g
+            if let tw = tornado, tw.strength > 0.05, p.orbitRadius >= 0 {
+                a += tornadoInfluence(&p, tornado: tw)
+                if p.state == .swirling { ptr[i] = p; i += 1; continue }     // taken into the funnel
+            }
             if pointer.isActive {
                 let pa = ForceField.pointerAcceleration(particle: p.position, pointer: pointer)
                 if pa != .zero { a += pa; p.state = .disturbed; p.stateTime = 0 }
