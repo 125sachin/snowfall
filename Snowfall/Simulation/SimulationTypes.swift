@@ -28,6 +28,10 @@ struct SnowParticle: Sendable {
     var orbitPhase: Float = 0
     var orbitRadius: Float = 1
     var baseRadius: Float = 1
+    var startX: Float = 0         // where a swirling particle entered the funnel
+    var startY: Float = 0
+    var targetY: Float = 0        // altitude it settles into while joining the spiral
+    var blendTime: Float = 0.7    // seconds taken to fly into the spiral
 
     static let blank = SnowParticle(position: .zero, velocity: .zero, radius: 1, rotation: 0,
                                     angularVelocity: 0, opacity: 1, mass: 1, volume: 0,

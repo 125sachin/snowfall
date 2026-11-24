@@ -173,6 +173,10 @@ final class PhysicsWorld {
                 if keep { ptr[i] = p; i += 1 } else { pool.remove(at: i) }
                 continue
             }
+            if p.orbitRadius < 0 {                               // thrown out by the tornado: fade away
+                p.opacity -= 1.3 * dt
+                if p.opacity <= 0.02 { pool.remove(at: i); continue }
+            }
             var a = g
             if let tw = tornado, tw.strength > 0.05, p.orbitRadius >= 0 {
                 a += tornadoInfluence(&p, tornado: tw)

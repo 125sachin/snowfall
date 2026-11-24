@@ -198,7 +198,8 @@ extension PhysicsWorld {
         var p = SnowParticle.blank
         let startX = x ?? t.x
         p.position = SIMD2(startX, y ?? (t.baseY + rng.float(0...10)))
-        p.velocity = SIMD2(startX, rng.float(95...175))          // .x = entry x (blended away), .y = rise speed
+        p.velocity = SIMD2(0, rng.float(95...175))               // .y = rise speed
+        p.startX = startX; p.startY = p.position.y; p.targetY = p.position.y; p.blendTime = 0.7
         p.orbitPhase = rng.float(0...6.283)
         p.orbitRadius = rng.float(0.55...1.35)
         p.angularVelocity = config.tornadoOmega * rng.float(0.8...1.25)
@@ -215,40 +216,48 @@ extension PhysicsWorld {
     func stepSwirl(_ p: inout SnowParticle, dt: Float) -> Bool {
         guard let t = tornado else { eject(&p, rho: 30); return true }
         p.stateTime += dt
-        p.position.y += p.velocity.y * dt
+        let blend = min(1, p.stateTime / max(p.blendTime, 0.05))
+        let e = blend * blend * (3 - 2 * blend)
+        // Altitude: fly from where it was caught to its entry altitude, then rise with the spiral.
+        p.position.y = p.startY + (p.targetY - p.startY) * e + p.velocity.y * p.stateTime
         let h = max(0, p.position.y - t.baseY)
         p.orbitPhase += p.angularVelocity * dt
         let rho = (config.tornadoCoreRadius + h * config.tornadoSlope) * p.orbitRadius * (0.35 + 0.65 * t.strength)
-        let axis = t.x + t.lean * (h / max(t.height, 1))
+        let axis = t.x + t.lean * (min(h, t.height) / max(t.height, 1))
         let orbitX = axis + rho * cos(p.orbitPhase)
-        let blend = min(1, p.stateTime / 0.7)
-        let e = blend * blend * (3 - 2 * blend)
-        p.position.x = p.velocity.x * (1 - e) + orbitX * e
+        p.position.x = p.startX * (1 - e) + orbitX * e
         let depth = 0.5 + 0.5 * sin(p.orbitPhase)                // 1 = near side of the funnel
         p.radius = p.baseRadius * (0.7 + 0.3 * depth)
         p.opacity = p.mass * (0.45 + 0.55 * depth)
         p.rotation += 2 * dt
-        if p.position.y > t.baseY + t.height + 30 || p.stateTime > 6 { eject(&p, rho: rho) }
+        if h > t.height + 30 || p.stateTime > 6 { eject(&p, rho: rho) }
         return true
     }
 
     /// Flings a swirling particle off the funnel. Its snow volume has now left the system.
     private func eject(_ p: inout SnowParticle, rho: Float) {
-        p.velocity = SIMD2(-sin(p.orbitPhase) * rho * p.angularVelocity * 0.8 - 60, 70 + rng.float(0...80))
+        // Always thrown up and to the LEFT (the direction of travel), then fades out: nothing is
+        // left behind on the right of the tornado.
+        let tangential = abs(sin(p.orbitPhase)) * rho * p.angularVelocity * 0.8
+        p.velocity = SIMD2(-(tangential + 90 + rng.float(0...120)), 70 + rng.float(0...80))
         p.state = .displaced
         p.stateTime = 0
         p.radius = p.baseRadius
         p.opacity = max(p.opacity, 0.7)
         p.mass = 1.3
-        p.orbitRadius = -1                 // marks "already thrown out": the tornado ignores it from now on
+        p.orbitRadius = -1                 // marks "thrown out": ignored by the tornado and fading
         totals.lostVolume += p.volume
         p.volume = 0
     }
 
-    /// Effect of the tornado on an airborne flake. Santa's magic reaches ALL snow in the air: every
-    /// falling flake homes in on the funnel from anywhere on screen (a velocity-steering pull that
-    /// grows with distance), drops in if it is above the funnel, and is taken into the spiral
-    /// (`.swirling`) once it reaches the catch zone. Returns the extra acceleration (pt/s²).
+    /// Effect of the tornado on an airborne flake. The tornado travels right → left:
+    /// - everything BEHIND it (to its right) and inside its core is taken into the spiral at once, so
+    ///   the right side empties as it passes;
+    /// - snow AHEAD of it (to its left) is only drawn in once it is within reach, so the sweep visibly
+    ///   advances leftward and the rest is taken when the tornado arrives.
+    /// Returns the extra acceleration (pt/s²) for flakes still on their way.
+    static let tornadoReach: Float = 320
+
     func tornadoInfluence(_ p: inout SnowParticle, tornado t: Tornado) -> SIMD2<Float> {
         let h = p.position.y - t.baseY
         guard h > -20 else { return .zero }
@@ -256,28 +265,33 @@ extension PhysicsWorld {
         let axis = t.x + t.lean * (hc / max(t.height, 1))
         let dx = p.position.x - axis
         let coneR = (config.tornadoCoreRadius + hc * config.tornadoSlope) * (0.35 + 0.65 * t.strength)
-        let adx = abs(dx)
         let catchR = coneR * 1.5 + 30 * t.strength
-        if h <= t.height, adx < catchR {
-            p.state = .swirling
-            p.stateTime = 0
-            p.velocity = SIMD2(p.position.x, rng.float(95...175))     // .x = entry x, .y = rise speed
-            p.orbitPhase = dx >= 0 ? rng.float(-0.8...0.8) : rng.float(2.3...3.9)
-            p.orbitRadius = rng.float(0.55...1.35)
-            p.angularVelocity = config.tornadoOmega * rng.float(0.8...1.25)
-            p.baseRadius = p.radius
-            p.mass = min(max(p.opacity, 0.5), 1)                      // base opacity while swirling
+        if dx > -catchR {
+            capture(&p, dx: dx, tornado: t)
             return .zero
         }
-        // Homing: steer horizontal velocity toward the axis, faster the farther away it is.
+        guard -dx < catchR + PhysicsWorld.tornadoReach else { return .zero }
+        // Ahead of the tornado, within reach: pull toward it, following its travel, kept aloft.
         let k = 8 * t.strength
         let ease = t.strength * t.strength * (3 - 2 * t.strength)
-        let desiredVx = -config.tornadoSpeed * ease - min(max(dx * 1.1, -900), 900)   // follow the tornado, close the gap
-        // Also steer vertically toward the middle of the funnel: airborne flakes are carried up (or
-        // down) to it instead of falling to the floor on the way, so they do not settle again.
+        let desiredVx = -config.tornadoSpeed * ease - min(max(dx * 1.1, -900), 900)
         let targetY = t.baseY + max(t.height, 120) * 0.5
         let desiredVy = min(max((targetY - p.position.y) * 0.9, -260), 260)
-        let ay = (desiredVy - p.velocity.y) * k
-        return SIMD2((desiredVx - p.velocity.x) * k, ay)
+        return SIMD2((desiredVx - p.velocity.x) * k, (desiredVy - p.velocity.y) * k)
+    }
+
+    private func capture(_ p: inout SnowParticle, dx: Float, tornado t: Tornado) {
+        p.state = .swirling
+        p.stateTime = 0
+        p.startX = p.position.x
+        p.startY = p.position.y
+        p.targetY = min(max(p.position.y, t.baseY + 5), t.baseY + max(t.height, 120) * 0.85)
+        p.blendTime = min(max(abs(dx) / 1800, 0.35), 0.9)             // far flakes streak in quickly
+        p.velocity = SIMD2(0, rng.float(95...175))                    // .y = rise speed once in the spiral
+        p.orbitPhase = dx >= 0 ? rng.float(-0.8...0.8) : rng.float(2.3...3.9)
+        p.orbitRadius = rng.float(0.55...1.35)
+        p.angularVelocity = config.tornadoOmega * rng.float(0.8...1.25)
+        p.baseRadius = p.radius
+        p.mass = min(max(p.opacity, 0.5), 1)                          // base opacity while swirling
     }
 }

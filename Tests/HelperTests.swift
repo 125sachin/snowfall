@@ -257,7 +257,7 @@ final class TornadoAirborneTests: XCTestCase {
     func testFlakeAheadOfTheTornadoIsTakenToo() {
         let w = tornadoWorld()
         guard let t = w.tornado else { return XCTFail("no tornado") }
-        w.pool.spawn(flake(t.x - 700, t.baseY + 400))
+        w.pool.spawn(flake(t.x - 380, t.baseY + 300))      // inside the tornado's reach
         let idx = w.pool.count - 1
         var caught = false
         for _ in 0..<(120 * 5) {
@@ -265,6 +265,49 @@ final class TornadoAirborneTests: XCTestCase {
             if idx < w.pool.count, w.pool[idx].state == .swirling { caught = true; break }
         }
         XCTAssertTrue(caught)
+    }
+
+    func testSnowAheadOutsideReachIsLeftUntilTheTornadoArrives() {
+        let w = tornadoWorld()
+        guard let t = w.tornado else { return XCTFail("no tornado") }
+        w.pool.spawn(flake(t.x - 900, t.baseY + 600))
+        let idx = w.pool.count - 1
+        for _ in 0..<30 { w.step(dt: 1.0 / 120) }
+        XCTAssertEqual(w.pool[idx].state, .falling, "the sweep advances right to left; far-ahead snow is not yet touched")
+    }
+
+    func testNothingIsLeftOnTheRightOfTheTornado() {
+        var c = SimulationConfiguration(); c.density = 1; c.maxParticles = 800; c.plowAuto = false; c.helper = .santa; c.seed = 21
+        let w = PhysicsWorld(config: c)
+        w.setRegion(CGRect(x: 0, y: 0, width: 1600, height: 900))
+        w.setSurfaces([CollisionSurface(id: "floor", frame: CGRect(x: 0, y: 0, width: 1600, height: 0), velocity: .zero, kind: .displayBottom)])
+        w.prewarm()
+        w.startHelper(.santa)
+        while w.tornado == nil && w.isHelperRunning { w.step(dt: 1.0 / 120) }
+        var worst = 0
+        var samples = 0
+        while let t = w.tornado {
+            w.step(dt: 1.0 / 120)
+            guard t.x < 1000, t.strength >= 1 else { continue }
+            // Allow time for flakes that were just passed to streak in; check a strip well behind.
+            let behind = (0..<w.pool.count).filter { i in
+                let p = w.pool[i]
+                return p.state != .sparkle && p.position.x > t.x + 450 && p.position.x < 1700
+            }.count
+            worst = max(worst, behind); samples += 1
+        }
+        XCTAssertGreaterThan(samples, 100)
+        XCTAssertLessThanOrEqual(worst, 6, "no snow should be visible to the right of the tornado (worst \(worst))")
+    }
+
+    func testThrownOutFlakesFlyLeftAndFadeAway() {
+        let w = tornadoWorld()
+        for _ in 0..<(120 * 3) { w.step(dt: 1.0 / 120) }
+        let thrown = (0..<w.pool.count).filter { w.pool[$0].orbitRadius < 0 }
+        XCTAssertFalse(thrown.isEmpty)
+        for i in thrown { XCTAssertLessThan(w.pool[i].velocity.x, 40, "thrown out toward the left, never back to the right") }
+        for _ in 0..<(120 * 3) { w.step(dt: 1.0 / 120) }
+        XCTAssertLessThan((0..<w.pool.count).filter { w.pool[$0].orbitRadius < 0 }.count, thrown.count + 40)
     }
 
     func testNoNewSnowSpawnsWhileTheTornadoWorks() {
