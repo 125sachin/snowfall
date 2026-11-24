@@ -103,7 +103,7 @@ extension PhysicsWorld {
     }
 
     func startThor() {
-        guard thor == nil, plow == nil, santa == nil, ironMan == nil, tornado == nil, !region.isEmpty else { return }
+        guard thor == nil, plow == nil, santa == nil, ironMan == nil, tornado == nil, spider == nil, !region.isEmpty else { return }
         let sites = chooseThorSites()
         guard let first = sites.first else { return }
         thorBlowLog.removeAll()

@@ -62,6 +62,12 @@ top, and swings twice per site on a fixed timeline (wind-up 0.5 s, blow 1 at 0.6
 of depth removed, falling off toward the edge); blow 2 shatters it (radius 155 pt, everything in the core removed). Removed volume is thrown out as fading ice shards
 (counted as lost), airborne snow within 1.6× the radius is blasted outward, and each blow draws a lightning bolt from the sky, a shockwave ring, a crack pattern that fades
 after 3 s, and a flash. He does not clear the whole floor — only the spots he hits.
+**Spider-Man:** swings in from the right on webs, always heading left. Each swing is a rigid-rope pendulum (g = 900, small leftward pump below the anchor so he
+keeps going). The next anchor is placed ahead-left and above (rise 360 pt) with dx = √(H² + 2·H·dy), which makes the rope L = H + dy so the lowest point of the arc is
+exactly the skim line (feet 6 pt above the surface base); he lets go on the far side and webs the next anchor. His feet scrape a furrow through the snow (everything above
+foot level within ±26 pt of his path), shedding fading spray. Every ~2 s a web ball is fired at the biggest 120 pt-wide pile 130–950 pt ahead; it lands as a web patch, then
+a yank tears the clump off (radius 70 pt, shatter profile) and hauls the chunks toward him before they fade. Every ~3 s he spins a net (radius 150 pt) ahead of him that
+captures airborne flakes touching it for 0.55 s. All removed snow is counted as lost; he exits up-left past the left edge.
 **Adding a helper:** see the checklist on `HelperKind`.
 
 ## Known limitations

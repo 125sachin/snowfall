@@ -42,7 +42,7 @@ struct IronManRun {
 
 extension PhysicsWorld {
     func startIronMan() {
-        guard ironMan == nil, plow == nil, santa == nil, tornado == nil, thor == nil, !region.isEmpty else { return }
+        guard ironMan == nil, plow == nil, santa == nil, tornado == nil, thor == nil, spider == nil, !region.isEmpty else { return }
         let hx = Float(region.maxX) - 40
         let floorY = floorState(at: hx)?.surface.topY ?? Float(region.minY)
         let hy = floorY + max(220, min(340, Float(region.height) * 0.32))

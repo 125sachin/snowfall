@@ -66,6 +66,25 @@ struct RenderThor: Sendable {
     var flashPos: SIMD2<Float>
 }
 
+struct RenderWebBall: Sendable { var pos: SIMD2<Float> }
+struct RenderWebPatch: Sendable { var x: Float; var y: Float; var radius: Float; var alpha: Float }
+struct RenderWebPull: Sendable { var to: SIMD2<Float>; var alpha: Float }
+
+struct RenderSpider: Sendable {
+    var x: Float              // sprite centre
+    var y: Float
+    var rot: Float            // radians, CCW; positive leans the head toward the left
+    var hand: SIMD2<Float>
+    var anchor: SIMD2<Float>
+    var attached: Bool
+    var balls: [RenderWebBall]
+    var patches: [RenderWebPatch]
+    var pulls: [RenderWebPull]
+    var netCenter: SIMD2<Float>
+    var netRadius: Float
+    var netAlpha: Float
+}
+
 struct SimulationStats: Sendable, Equatable {
     var particleCount = 0
     var surfaceCount = 0
@@ -88,5 +107,6 @@ struct RenderSnapshot: Sendable {
     var santas: [RenderSanta] = []
     var ironMen: [RenderIronMan] = []
     var thors: [RenderThor] = []
+    var spiders: [RenderSpider] = []
     var stats = SimulationStats()
 }

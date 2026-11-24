@@ -44,6 +44,7 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
     private let wandTexture: MTLTexture?
     private let ironTextures: IronManSprites.Textures?
     private let thorTextures: ThorSprites.Textures?
+    private let spiderTextures: SpiderSprites.Textures?
     private let inFlight = DispatchSemaphore(value: 2)
     private var ring = 0
     private var particleBuffers: [MTLBuffer] = []
@@ -98,6 +99,7 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         santaTexture = santa?.body; wandTexture = santa?.wand
         ironTextures = IronManSprites.makeTextures(device: device)
         thorTextures = ThorSprites.makeTextures(device: device)
+        spiderTextures = SpiderSprites.makeTextures(device: device)
 
         func buf(_ bytes: Int) throws -> MTLBuffer {
             guard let b = device.makeBuffer(length: bytes, options: .storageModeShared) else {
@@ -190,6 +192,9 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
             if let body = santaTexture, let wand = wandTexture {
                 for sa in snap.santas { drawSanta(sa, body: body, wand: wand, encoder: enc, uniforms: &u, frame: f) }
             }
+            if let tex = spiderTextures {
+                for sp in snap.spiders { drawSpider(sp, textures: tex, encoder: enc, uniforms: &u, frame: f) }
+            }
             if let tex = thorTextures {
                 for th in snap.thors { drawThor(th, textures: tex, encoder: enc, uniforms: &u, frame: f) }
             }
@@ -222,6 +227,45 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         enc.setVertexBytes(&u, length: MemoryLayout<ViewUniforms>.stride, index: 1)
         enc.setFragmentTexture(tex, index: 0)
         enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+    }
+
+    private func drawThread(_ tex: MTLTexture, from a: SIMD2<Float>, to b: SIMD2<Float>, thickness: Float, alpha: Float,
+                            encoder enc: MTLRenderCommandEncoder, uniforms u: inout ViewUniforms, frame f: CGRect) {
+        let minX = min(a.x, b.x), maxX = max(a.x, b.x), minY = min(a.y, b.y), maxY = max(a.y, b.y)
+        guard maxX > Float(f.minX), minX < Float(f.maxX), maxY > Float(f.minY), minY < Float(f.maxY) else { return }
+        let d = b - a
+        let len = simd_length(d)
+        guard len > 2 else { return }
+        let mid = (a + b) / 2
+        drawSprite(tex, encoder: enc, uniforms: &u, cx: mid.x, cy: mid.y, w: len, h: thickness, rot: atan2(d.y, d.x), alpha: alpha)
+    }
+
+    private func drawSpider(_ s: RenderSpider, textures tex: SpiderSprites.Textures,
+                            encoder enc: MTLRenderCommandEncoder, uniforms u: inout ViewUniforms, frame f: CGRect) {
+        let k = SpiderMetrics.scale
+        let w = SpiderMetrics.width * k, h = SpiderMetrics.height * k
+        enc.setRenderPipelineState(spritePipeline)
+        // Web patches on piles (side view: squashed discs).
+        for p in s.patches where p.x + p.radius > Float(f.minX) && p.x - p.radius < Float(f.maxX) && p.y > Float(f.minY) - 40 && p.y < Float(f.maxY) {
+            drawSprite(tex.web, encoder: enc, uniforms: &u, cx: p.x, cy: p.y + p.radius * 0.18, w: p.radius * 2, h: p.radius * 1.2, rot: 0, alpha: p.alpha)
+        }
+        // Net spun in the air.
+        if s.netAlpha > 0.01, s.netRadius > 1 {
+            let c = s.netCenter, r = s.netRadius
+            if c.x + r > Float(f.minX), c.x - r < Float(f.maxX), c.y + r > Float(f.minY), c.y - r < Float(f.maxY) {
+                drawSprite(tex.web, encoder: enc, uniforms: &u, cx: c.x, cy: c.y, w: r * 2, h: r * 2, rot: s.rot, alpha: s.netAlpha)
+            }
+        }
+        // Web threads: to the anchor, to flying web balls, and the tug lines of a yank.
+        if s.attached { drawThread(tex.thread, from: s.hand, to: s.anchor, thickness: 3.2, alpha: 0.95, encoder: enc, uniforms: &u, frame: f) }
+        for b in s.balls { drawThread(tex.thread, from: s.hand, to: b.pos, thickness: 2.4, alpha: 0.8, encoder: enc, uniforms: &u, frame: f) }
+        for p in s.pulls { drawThread(tex.thread, from: s.hand, to: p.to, thickness: 3.0, alpha: p.alpha, encoder: enc, uniforms: &u, frame: f) }
+        for b in s.balls {
+            drawSprite(tex.ball, encoder: enc, uniforms: &u, cx: b.pos.x, cy: b.pos.y, w: 18, h: 18, rot: 0)
+        }
+        if s.x + w > Float(f.minX) && s.x - w < Float(f.maxX) && s.y + h > Float(f.minY) && s.y - h < Float(f.maxY) {
+            drawSprite(tex.body, encoder: enc, uniforms: &u, cx: s.x, cy: s.y, w: w, h: h, rot: s.rot)
+        }
     }
 
     private func drawThor(_ t: RenderThor, textures tex: ThorSprites.Textures,

@@ -13,12 +13,13 @@ enum HelperKind: String, Codable, CaseIterable, Identifiable, Sendable {
     case santa
     case ironMan
     case thor
+    case spiderMan
     case random
 
     var id: String { rawValue }
 
     /// Helpers that can actually run. `.random` chooses one of these.
-    static let concrete: [HelperKind] = [.jcb, .santa, .ironMan, .thor]
+    static let concrete: [HelperKind] = [.jcb, .santa, .ironMan, .thor, .spiderMan]
 
     var label: String {
         switch self {
@@ -26,6 +27,7 @@ enum HelperKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .santa: "Santa's magic tornado"
         case .ironMan: "Iron Man's eye lasers"
         case .thor: "Thor's hammer"
+        case .spiderMan: "Spider-Man's web swing"
         case .random: "Surprise me"
         }
     }
@@ -36,6 +38,7 @@ enum HelperKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .santa: "Santa"
         case .ironMan: "Iron Man"
         case .thor: "Thor"
+        case .spiderMan: "Spider-Man"
         case .random: "Helper"
         }
     }
@@ -50,6 +53,8 @@ enum HelperKind: String, Codable, CaseIterable, Identifiable, Sendable {
             "Iron Man flies in from the right and sweeps his eye lasers ahead of him as he heads left, melting settled snow into steam and vaporizing the flakes his beam crosses."
         case .thor:
             "Thor flies in and lands at two or three spots, heading left. At each one he brings Mjolnir down twice: the first blow cracks the ice layer, the second shatters it, with lightning, a shockwave and flying shards."
+        case .spiderMan:
+            "Spider-Man swings in on webs from the right, heading left. His feet scrape a furrow through the snow at the bottom of each swing, he webs the biggest piles and yanks them away, and he spins a net to catch snow still in the air."
         case .random:
             "A different helper is chosen each time."
         }

@@ -174,7 +174,7 @@ final class HelperTests: XCTestCase {
                        CollisionSurface(id: "win", frame: CGRect(x: 100, y: 100, width: 400, height: 300), velocity: .zero, kind: .windowTop, zRank: 0)])
         let win = w.state(forSurface: "win")!
         for i in 0..<win.field.binCount { win.field.add(volume: 10 * win.field.binWidth, toBin: i) }
-        XCTAssertEqual(w.eligibleHelpers(), [.santa, .ironMan, .thor], "only window snow: the JCB has nothing to plow")
+        XCTAssertEqual(w.eligibleHelpers(), [.santa, .ironMan, .thor, .spiderMan], "only window snow: the JCB has nothing to plow")
     }
 
     func testRenderSnapshotContainsSanta() {

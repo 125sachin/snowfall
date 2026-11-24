@@ -54,6 +54,8 @@ final class PhysicsWorld {
     var tornado: Tornado?
     var ironMan: IronManRun?
     var thor: ThorRun?
+    var spider: SpiderRun?
+    var spiderAnchorLog: [SIMD2<Float>] = []
     var thorBlowLog: [ThorBlow] = []
     var lastHelperEnd: Double = 0
     private var plowBlockedState: SurfaceState?
@@ -149,7 +151,7 @@ final class PhysicsWorld {
     }
 
     var isPlowRunning: Bool { plow != nil }
-    var isHelperRunning: Bool { plow != nil || santa != nil || tornado != nil || ironMan != nil || thor != nil }
+    var isHelperRunning: Bool { plow != nil || santa != nil || tornado != nil || ironMan != nil || thor != nil || spider != nil }
 
     func clearSnow() {
         for s in ordered { s.field.clear() }
@@ -222,6 +224,7 @@ final class PhysicsWorld {
         stepTornado(dt: dt)
         stepIronMan(dt: dt)
         stepThor(dt: dt)
+        stepSpider(dt: dt)
     }
 
     /// Returns true when the particle came to rest (and should be removed).
@@ -341,13 +344,14 @@ final class PhysicsWorld {
         case .santa: startSanta()
         case .ironMan: startIronMan()
         case .thor: startThor()
+        case .spiderMan: startSpider()
         case .random: break
         }
     }
 
     /// Sends the plow in from the right edge. No-op if one is already running.
     func startPlow() {
-        guard plow == nil, santa == nil, ironMan == nil, thor == nil, !region.isEmpty else { return }
+        guard plow == nil, santa == nil, ironMan == nil, thor == nil, spider == nil, !region.isEmpty else { return }
         let x = Float(region.maxX) + 20
         let ground = floorState(at: Float(region.maxX) - 1)?.surface.topY ?? Float(region.minY)
         plow = PlowVehicle(bladeX: x, groundY: ground)
@@ -496,6 +500,8 @@ final class PhysicsWorld {
         s.ironMen.removeAll(keepingCapacity: true)
         s.thors.removeAll(keepingCapacity: true)
         if let r = thor { s.thors.append(r.renderState) }
+        s.spiders.removeAll(keepingCapacity: true)
+        if let r = spider { s.spiders.append(r.renderState) }
         if let m = ironMan {
             s.ironMen.append(RenderIronMan(x: m.x, y: m.y, bob: m.bob, firing: m.firing, eye: m.eyeWorld, spot: m.spot, spot2: m.spot2, intensity: m.intensity))
         }
