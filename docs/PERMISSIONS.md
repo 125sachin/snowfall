@@ -4,7 +4,7 @@
 |---|---|---|
 | Overlay, falling snow, display-bottom accumulation | none | |
 | Pointer disturbance | none | `NSEvent.mouseLocation` reads the cursor position only. No event tap, no Input Monitoring. Clicks, keys and scrolls are never observed. |
-| Window physics (snow on window tops) | **Accessibility** | Documented AX APIs. Reads only position, size, minimized state and subrole of standard windows of regular apps. Never titles or contents. No screen capture. |
+| Window physics (snow on window tops) | **Accessibility** | Documented AX APIs for window frames, plus the window server's on-screen list (`CGWindowListCopyWindowInfo`) for stacking order only: owner pid, bounds, order.  Reads only position, size, minimized state and subrole of standard windows of regular apps. Never titles or contents. No screen capture. |
 | Launch at login | none | `SMAppService.mainApp`; the user can review it in System Settings → Login Items. |
 
 Behaviour:

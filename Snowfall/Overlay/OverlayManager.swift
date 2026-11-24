@@ -17,9 +17,11 @@ final class OverlayManager {
     private var fps = 60
     private var paused = false
     private var showBorders = false
+    private var hidden = false
 
     /// Called when Metal setup fails so the UI can say why snow is unavailable.
     var onRendererFailure: ((String) -> Void)?
+    var onOcclusionLost: (() -> Void)?
 
     init(simulation: SimulationCoordinator, monitor: PerformanceMonitor) {
         self.simulation = simulation
@@ -49,6 +51,7 @@ final class OverlayManager {
     }
 
     func hideAll() {
+        hidden = true
         for o in overlays.values { o.view.isPaused = true; o.window.orderOut(nil) }
     }
 
@@ -64,6 +67,15 @@ final class OverlayManager {
         for id in Array(overlays.keys) { remove(id) }
     }
 
+    /// Brings overlays back to front and resumes drawing. Cheap; safe to call often.
+    func reassert() {
+        guard !hidden else { return }
+        for o in overlays.values {
+            o.window.orderFrontRegardless()
+            if !paused { o.view.isPaused = false }
+        }
+    }
+
     private func create(_ d: DisplayDescriptor) {
         let window = OverlayWindow(display: d)
         let view = SnowfallView(frame: CGRect(origin: .zero, size: d.frame.size))
@@ -77,6 +89,13 @@ final class OverlayManager {
             window.contentView = view
             window.setFrame(d.frame, display: false)
             overlays[d.id] = Overlay(window: window, view: view, renderer: renderer)
+            NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main) { [weak self, weak window] _ in
+                MainActor.assumeIsolated {
+                    guard let self, let window, !self.hidden, !window.occlusionState.contains(.visible) else { return }
+                    self.onOcclusionLost?()
+                    self.reassert()
+                }
+            }
             SnowfallLogger.overlay.info("overlay created for display \(d.id) scale \(d.scale)")
         } catch {
             SnowfallLogger.render.error("renderer failed: \(error.localizedDescription)")
@@ -94,6 +113,7 @@ final class OverlayManager {
     }
 
     private func applyState() {
+        hidden = false
         for o in overlays.values {
             o.view.preferredFramesPerSecond = fps
             o.renderer.drawsDisplayBorder = showBorders

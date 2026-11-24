@@ -66,7 +66,7 @@ struct LabeledSlider: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title).font(.subheadline)
             Slider(value: $value, in: range) {
-                Text(title)
+                EmptyView()
             } minimumValueLabel: {
                 Text(lowLabel).font(.caption)
             } maximumValueLabel: {

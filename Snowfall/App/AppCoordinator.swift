@@ -26,6 +26,7 @@ final class AppCoordinator {
     @ObservationIgnored private var suspended = false
     @ObservationIgnored private var windowsRunning = false
     @ObservationIgnored private var started = false
+    @ObservationIgnored private var activity: NSObjectProtocol?
 
     init(store: SettingsStore = SettingsStore()) {
         self.store = store
@@ -75,10 +76,23 @@ final class AppCoordinator {
         timers.append(Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.refreshStats() }
         })
+        // Keep timers and display links running while another app is frontmost (App Nap would
+        // otherwise throttle an accessory app with no visible UI of its own).
+        activity = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiated, .latencyCritical], reason: "Snowfall animation")
+        // Another app activating or a Space change can reorder windows; re-assert the overlays.
+        let ws2 = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didActivateApplicationNotification, NSWorkspace.activeSpaceDidChangeNotification] {
+            observers.append(ws2.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.overlays.reassert() }
+            })
+        }
+        overlays.onOcclusionLost = { SnowfallLogger.overlay.info("overlay occlusion lost; re-asserting") }
         applyAll()
     }
 
     func stop() {
+        if let a = activity { ProcessInfo.processInfo.endActivity(a); activity = nil }
         timers.forEach { $0.invalidate() }
         timers.removeAll()
         mouse.stop()

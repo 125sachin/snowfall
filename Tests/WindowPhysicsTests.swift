@@ -138,3 +138,77 @@ final class WindowPhysicsTests: XCTestCase {
         XCTAssertEqual(w.pool.count, 0)
     }
 }
+
+/// Window stacking: covered windows must not show snow; new top windows collect it.
+final class WindowStackingTests: XCTestCase {
+    private func surf(_ id: String, _ f: CGRect, z: Int) -> CollisionSurface {
+        CollisionSurface(id: id, frame: f, velocity: .zero, kind: .windowTop, zRank: z)
+    }
+
+    func testZOrderMatchesByPidAndFrameAndDropsOffscreen() {
+        func w(_ id: String, _ pid: pid_t, _ f: CGRect) -> WindowSnapshot {
+            WindowSnapshot(id: id, processID: pid, frame: f, isVisible: true, isMinimized: false, timestamp: 0)
+        }
+        let a = CGRect(x: 100, y: 100, width: 500, height: 400)
+        let b = CGRect(x: 300, y: 150, width: 500, height: 400)
+        let r = WindowZOrder.apply(to: [w("a", 1, a), w("b", 2, b), w("gone", 3, a)],
+                                   onScreen: [OnScreenWindow(pid: 2, frame: b.insetBy(dx: -2, dy: 0), rank: 0),
+                                              OnScreenWindow(pid: 1, frame: a, rank: 1)])
+        XCTAssertEqual(r.map(\.id).sorted(), ["a", "b"])
+        XCTAssertEqual(r.first { $0.id == "b" }?.zRank, 0)
+        XCTAssertEqual(r.first { $0.id == "a" }?.zRank, 1)
+    }
+
+    func testCoveredWindowSnowIsNotDrawn() {
+        var c = SimulationConfiguration(); c.density = 0
+        let w = PhysicsWorld(config: c)
+        let back = CGRect(x: 0, y: 100, width: 600, height: 300)       // top y = 400
+        let front = CGRect(x: 0, y: 200, width: 600, height: 400)      // top y = 600, covers back's top edge
+        w.setSurfaces([surf("front", front, z: 0), surf("back", back, z: 1)])
+        w.state(forSurface: "back")!.field.deposit(localX: 300, volume: 200, spreadBins: 21)
+        var snap = RenderSnapshot()
+        w.fill(snapshot: &snap, showSurfaces: false, stats: SimulationStats())
+        XCTAssertTrue(snap.surfaces.count == 1)
+        XCTAssertEqual(snap.heights.reduce(0, +), 0, "covered snow must be hidden")
+        XCTAssertGreaterThan(w.state(forSurface: "back")!.field.volume, 0, "but it is kept")
+    }
+
+    func testUncoveredWindowSnowIsDrawn() {
+        var c = SimulationConfiguration(); c.density = 0
+        let w = PhysicsWorld(config: c)
+        let a = CGRect(x: 0, y: 100, width: 600, height: 300)
+        let b = CGRect(x: 800, y: 100, width: 600, height: 300)        // side by side
+        w.setSurfaces([surf("a", a, z: 0), surf("b", b, z: 1)])
+        w.state(forSurface: "b")!.field.deposit(localX: 300, volume: 200, spreadBins: 21)
+        var snap = RenderSnapshot()
+        w.fill(snapshot: &snap, showSurfaces: false, stats: SimulationStats())
+        XCTAssertGreaterThan(snap.heights.reduce(0, +), 0)
+    }
+
+    func testSnowStacksOnNewTopWindow() {
+        var c = SimulationConfiguration(); c.density = 0; c.windStrength = 0; c.turbulence = 0
+        let w = PhysicsWorld(config: c)
+        let back = CGRect(x: 0, y: 100, width: 600, height: 300)       // top 400
+        let front = CGRect(x: 0, y: 200, width: 600, height: 400)      // top 600
+        w.setSurfaces([surf("front", front, z: 0), surf("back", back, z: 1)])
+        var s = SnowParticle.blank
+        s.position = SIMD2(300, 600.5); s.velocity = SIMD2(0, -400); s.mass = 1; s.volume = 5
+        w.pool.spawn(s)
+        w.step(dt: 1.0 / 120)
+        XCTAssertEqual(w.state(forSurface: "front")!.field.volume, 5, accuracy: 0.01)
+        XCTAssertEqual(w.state(forSurface: "back")!.field.volume, 0, accuracy: 0.001)
+    }
+
+    func testSnowReappearsWhenCoverLeaves() {
+        var c = SimulationConfiguration(); c.density = 0
+        let w = PhysicsWorld(config: c)
+        let back = CGRect(x: 0, y: 100, width: 600, height: 300)
+        let front = CGRect(x: 0, y: 200, width: 600, height: 400)
+        w.setSurfaces([surf("front", front, z: 0), surf("back", back, z: 1)])
+        w.state(forSurface: "back")!.field.deposit(localX: 300, volume: 200, spreadBins: 21)
+        w.setSurfaces([surf("back", back, z: 0)])
+        var snap = RenderSnapshot()
+        w.fill(snapshot: &snap, showSurfaces: false, stats: SimulationStats())
+        XCTAssertGreaterThan(snap.heights.reduce(0, +), 0)
+    }
+}

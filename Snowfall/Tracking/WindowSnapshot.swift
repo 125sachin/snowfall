@@ -9,6 +9,13 @@ struct WindowSnapshot: Identifiable, Equatable, Sendable {
     let isVisible: Bool
     let isMinimized: Bool
     let timestamp: TimeInterval
+    /// 0 = frontmost on screen. Derived from the window server's stacking order.
+    var zRank: Int = 0
+
+    func withZRank(_ r: Int) -> WindowSnapshot {
+        WindowSnapshot(id: id, processID: processID, frame: frame, isVisible: isVisible,
+                       isMinimized: isMinimized, timestamp: timestamp, zRank: r)
+    }
 }
 
 enum WindowEligibility {
@@ -49,7 +56,7 @@ struct SurfaceBuilder {
                 }
             }
             next[w.id] = (w.frame, w.timestamp, v)
-            result.append(CollisionSurface(id: "window-\(w.id)", frame: w.frame, velocity: v, kind: .windowTop))
+            result.append(CollisionSurface(id: "window-\(w.id)", frame: w.frame, velocity: v, kind: .windowTop, zRank: w.zRank))
         }
         previous = next
         return result

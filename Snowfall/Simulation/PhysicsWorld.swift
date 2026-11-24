@@ -267,6 +267,19 @@ final class PhysicsWorld {
         }
     }
 
+    /// x-spans where windows stacked *in front of* this window cover its top edge. Snow resting on
+    /// a covered edge is not drawn (it reappears when the cover moves or closes); new snow lands on
+    /// the front window instead because collision picks the highest surface.
+    func occludedSpans(for st: SurfaceState) -> [(Float, Float)] {
+        guard st.surface.kind == .windowTop else { return [] }
+        let top = CGFloat(st.surface.topY)
+        return ordered.compactMap { o in
+            guard o !== st, o.surface.kind == .windowTop, o.surface.zRank < st.surface.zRank,
+                  o.surface.frame.minY < top, o.surface.frame.maxY > top else { return nil }
+            return (o.surface.minX, o.surface.maxX)
+        }
+    }
+
     func fill(snapshot s: inout RenderSnapshot, showSurfaces: Bool, stats: SimulationStats) {
         s.particles.removeAll(keepingCapacity: true)
         s.surfaces.removeAll(keepingCapacity: true)
@@ -284,7 +297,12 @@ final class PhysicsWorld {
                 s.surfaces.append(RenderSurface(minX: sf.minX, baseY: sf.topY, binWidth: st.field.binWidth,
                                                 binCount: st.field.binCount, heightOffset: s.heights.count,
                                                 maxDepth: st.field.maxDepth))
-                for b in 0..<st.field.binCount { s.heights.append(st.field.height(atBin: b)) }
+                let hidden = occludedSpans(for: st)
+                for b in 0..<st.field.binCount {
+                    let cx = sf.minX + (Float(b) + 0.5) * st.field.binWidth
+                    let isHidden = hidden.contains { cx >= $0.0 && cx <= $0.1 }
+                    s.heights.append(isHidden ? 0 : st.field.height(atBin: b))
+                }
             }
             if showSurfaces {
                 let c: SIMD4<Float> = sf.kind == .windowTop ? SIMD4(1, 0.3, 0.2, 0.9) : SIMD4(0.2, 0.7, 1, 0.9)

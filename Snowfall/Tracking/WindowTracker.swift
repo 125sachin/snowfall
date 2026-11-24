@@ -76,9 +76,29 @@ final class WindowTracker: @unchecked Sendable {
                 out.append(snap)
             }
         }
+        if let onScreen = Self.onScreenWindows(primaryHeight: primaryHeight) {
+            out = WindowZOrder.apply(to: out, onScreen: onScreen)   // drops windows not on screen
+        }
         if frames != lastFrames { lastMotion = now }
         lastFrames = frames
         onSnapshots?(out)
+    }
+
+    /// Stacking order from the window server: owner pid, bounds and order only. Titles are never
+    /// read and no pixels are captured. Front-to-back; index = rank.
+    private static func onScreenWindows(primaryHeight: CGFloat) -> [OnScreenWindow]? {
+        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+                as? [[String: Any]] else { return nil }
+        var result: [OnScreenWindow] = []
+        for (i, d) in list.enumerated() {
+            guard let pid = d["kCGWindowOwnerPID"] as? Int,
+                  let b = d["kCGWindowBounds"] as? [String: Any],
+                  let rect = CGRect(dictionaryRepresentation: b as CFDictionary) else { continue }
+            result.append(OnScreenWindow(pid: pid_t(pid),
+                                         frame: CoordinateSpace.appKitRect(fromAXRect: rect, primaryHeightPoints: primaryHeight),
+                                         rank: i))
+        }
+        return result
     }
 
     private static func snapshot(of w: AXUIElement, pid: pid_t, primaryHeight: CGFloat, time: TimeInterval) -> WindowSnapshot? {

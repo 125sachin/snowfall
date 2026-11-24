@@ -10,6 +10,8 @@ struct CollisionSurface: Identifiable, Equatable, Sendable {
     let frame: CGRect
     let velocity: CGVector
     let kind: SurfaceKind
+    /// Stacking order: 0 = frontmost window. Display floors use Int.max.
+    var zRank: Int = Int.max
 
     var topY: Float { Float(frame.maxY) }
     var minX: Float { Float(frame.minX) }
