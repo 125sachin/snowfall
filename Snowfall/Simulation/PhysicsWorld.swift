@@ -55,6 +55,12 @@ final class PhysicsWorld {
     var ironMan: IronManRun?
     var thor: ThorRun?
     var spider: SpiderRun?
+    var penguin: PenguinRun?
+    var fighter: FighterRun?
+    var builder: BuilderRun?
+    var sleigh: SleighRun?
+    var snowmen: [SnowmanDecor] = []
+    var decals: [SplatDecal] = []
     var spiderAnchorLog: [SIMD2<Float>] = []
     var thorBlowLog: [ThorBlow] = []
     var lastHelperEnd: Double = 0
@@ -151,10 +157,12 @@ final class PhysicsWorld {
     }
 
     var isPlowRunning: Bool { plow != nil }
-    var isHelperRunning: Bool { plow != nil || santa != nil || tornado != nil || ironMan != nil || thor != nil || spider != nil }
+    var isHelperRunning: Bool { plow != nil || santa != nil || tornado != nil || ironMan != nil || thor != nil || spider != nil
+        || penguin != nil || fighter != nil || builder != nil || sleigh != nil }
 
     func clearSnow() {
         for s in ordered { s.field.clear() }
+        decals.removeAll(); snowmen.removeAll()
     }
 
     func clearParticles() { pool.removeAll() }
@@ -225,6 +233,11 @@ final class PhysicsWorld {
         stepIronMan(dt: dt)
         stepThor(dt: dt)
         stepSpider(dt: dt)
+        stepPenguin(dt: dt)
+        stepFighter(dt: dt)
+        stepBuilder(dt: dt)
+        stepSleigh(dt: dt)
+        stepDecor(dt: dt)
     }
 
     /// Returns true when the particle came to rest (and should be removed).
@@ -326,7 +339,7 @@ final class PhysicsWorld {
 
     private func volume(_ kind: HelperKind) -> Float {
         switch kind {
-        case .jcb: return ordered.filter { $0.surface.kind == .displayBottom }.reduce(0) { max($0, $1.field.volume) }
+        case .jcb, .penguin, .snowman: return ordered.filter { $0.surface.kind == .displayBottom }.reduce(0) { max($0, $1.field.volume) }
         default: return ordered.reduce(0) { max($0, $1.field.volume) }
         }
     }
@@ -347,6 +360,10 @@ final class PhysicsWorld {
         case .ironMan: startIronMan()
         case .thor: startThor()
         case .spiderMan: startSpider()
+        case .penguin: startPenguin()
+        case .snowballFight: startFighter()
+        case .snowman: startBuilder()
+        case .sleigh: startSleigh()
         case .random: break
         }
     }
@@ -502,6 +519,8 @@ final class PhysicsWorld {
         s.ironMen.removeAll(keepingCapacity: true)
         s.thors.removeAll(keepingCapacity: true)
         if let r = thor { s.thors.append(r.renderState) }
+        s.props.removeAll(keepingCapacity: true)
+        fillProps(&s.props)
         s.spiders.removeAll(keepingCapacity: true)
         if let r = spider { s.spiders.append(r.renderState) }
         if let m = ironMan {

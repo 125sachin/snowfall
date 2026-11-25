@@ -109,5 +109,6 @@ struct RenderSnapshot: Sendable {
     var ironMen: [RenderIronMan] = []
     var thors: [RenderThor] = []
     var spiders: [RenderSpider] = []
+    var props: [RenderProp] = []
     var stats = SimulationStats()
 }

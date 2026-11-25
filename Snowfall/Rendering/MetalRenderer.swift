@@ -47,6 +47,7 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
     private var ironTextures: IronManSprites.Textures?
     private var thorTextures: ThorSprites.Textures?
     private var spiderTextures: SpiderSprites.Textures?
+    private var propTextures: PropSprites.Textures?
     private var lastHelperDraw: CFTimeInterval = 0
     private let inFlight = DispatchSemaphore(value: 2)
     private var ring = 0
@@ -185,7 +186,7 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
                 enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: s.binCount * 12)
             }
             let anyHelper = !(snap.vehicles.isEmpty && snap.santas.isEmpty && snap.spiders.isEmpty
-                              && snap.thors.isEmpty && snap.ironMen.isEmpty)
+                              && snap.thors.isEmpty && snap.ironMen.isEmpty && snap.props.isEmpty)
             if anyHelper { lastHelperDraw = CACurrentMediaTime() }
             if !snap.vehicles.isEmpty {
                 if jcbTextures == nil { jcbTextures = VehicleSprites.makeTextures(device: device) }
@@ -211,8 +212,19 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
                 if ironTextures == nil { ironTextures = IronManSprites.makeTextures(device: device) }
                 if let tex = ironTextures { for m in snap.ironMen { drawIronMan(m, textures: tex, encoder: enc, uniforms: &u, frame: f) } }
             }
+            if !snap.props.isEmpty {
+                if propTextures == nil { propTextures = PropSprites.makeTextures(device: device) }
+                if let tex = propTextures {
+                    enc.setRenderPipelineState(spritePipeline)
+                    for p in snap.props {
+                        guard let t = tex[p.kind], p.x + p.w > Float(f.minX), p.x - p.w < Float(f.maxX),
+                              p.y + p.h > Float(f.minY), p.y - p.h < Float(f.maxY) else { continue }
+                        drawSprite(t, encoder: enc, uniforms: &u, cx: p.x, cy: p.y, w: p.w, h: p.h, rot: p.rot, alpha: p.alpha)
+                    }
+                }
+            }
             if !anyHelper, lastHelperDraw > 0, CACurrentMediaTime() - lastHelperDraw > 20 {
-                jcbTextures = nil; santaTextures = nil; ironTextures = nil; thorTextures = nil; spiderTextures = nil
+                jcbTextures = nil; santaTextures = nil; ironTextures = nil; thorTextures = nil; spiderTextures = nil; propTextures = nil
                 lastHelperDraw = 0
             }
             if pc > 0 {
