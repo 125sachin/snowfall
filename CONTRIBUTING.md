@@ -15,17 +15,89 @@ project settings in `project.yml`, not in Xcode.
 
 ## Making a change
 
-1. Fork the repository and create a branch from `main`.
-2. Keep the change small and focused, and run the tests before you push:
-   `xcodebuild -scheme Snowfall -destination 'platform=macOS' test`.
-3. Add or update tests for behaviour you change. The simulation is deterministic (seeded) so it is easy to test.
-4. Open a pull request that explains what changed and why.
+1. Fork the repository, clone your fork, and run `scripts/setup_hooks.sh` once. It enables local checks for commit
+   messages and branch names.
+2. Create a branch from the latest `main` using the [branch naming rules](#branch-names).
+3. Keep the change small and focused. Add or update tests for behaviour you change. The simulation is deterministic
+   (seeded) so it is easy to test.
+4. Run `scripts/precheck.sh --full` before you push (see [Before you open a pull request](#before-you-open-a-pull-request)).
+5. Open a pull request against `main` and fill in the template.
+
+### Branch names
+
+Use `<type>/<short-kebab-case-description>`, optionally starting with an issue number.
+
+- `<type>` is one of the commit types below.
+- Use lowercase letters, digits and hyphens only, and at most 60 characters in total.
+- Examples: `feat/reindeer-helper`, `fix/123-flicker-on-wake`, `docs/building-guide`.
+
+`main` is protected: nothing is pushed to it directly. `release/<x.y.z>` and `dependabot/*` are reserved for
+maintainers and bots.
 
 ### Commit messages
 
-Write the subject line in the imperative mood ("Add penguin helper", not "Added" or "Adds"), at most about 70
-characters, followed by a blank line and a short explanation of *why* when it is not obvious. One logical change per
-commit.
+This project uses [Conventional Commits](https://www.conventionalcommits.org/).
+
+```
+<type>(<optional-scope>): <description>
+
+<optional body: why the change is needed>
+
+<optional footers>
+```
+
+- **Type** is one of: `feat` (new behaviour), `fix` (bug fix), `docs`, `style` (formatting only), `refactor`, `perf`,
+  `test`, `build` (build system, dependencies, packaging), `ci`, `chore`, `revert`.
+- **Scope** is optional, lowercase, and names the area: `helpers`, `rendering`, `simulation`, `tracking`, `overlay`,
+  `app`, `ui`, `settings`, `docs`.
+- **Description** is in the imperative mood ("add penguin helper", not "added" or "adds"), starts with a lowercase
+  letter, has no trailing period, and keeps the whole first line to 72 characters or fewer.
+- **Body** is separated from the subject by a blank line, explains *why* rather than *what*, and is wrapped at 100
+  characters.
+- **Breaking changes** add `!` after the type or scope (`feat(settings)!: rename the helper option`) and a
+  `BREAKING CHANGE: <what changed and how to migrate>` footer.
+- **Issues** are referenced in a footer: `Fixes #123`.
+- One logical change per commit. The commit message is checked by `scripts/check_commit_msg.sh` locally (the
+  `commit-msg` hook) and in CI.
+
+Examples:
+
+```
+feat(helpers): add reindeer sleigh flyby
+fix(tracking): ignore windows with zero alpha
+docs: explain how to build the disk image
+```
+
+### Before you open a pull request
+
+Run `scripts/precheck.sh` (add `--full` to also build and test). It runs the same checks as CI:
+
+| Check | Rule |
+| --- | --- |
+| Working tree | No uncommitted changes. |
+| Branch name | Matches the [naming rules](#branch-names). |
+| Up to date | The branch is rebased on the latest `origin/main` and has no conflicts. |
+| Commit messages | Every commit follows the rules above. |
+| Conflict markers and artifacts | No `<<<<<<<` markers, `.dmg`, `.app`, `build/`, `dist/` or `.DS_Store` files. |
+| SwiftLint | `swiftlint lint --strict` reports nothing (`brew install swiftlint`). |
+| Build and tests | `xcodegen generate` then `xcodebuild -scheme Snowfall -destination 'platform=macOS' test` passes. |
+
+Resolve conflicts by rebasing, not by merging `main` into your branch:
+
+```sh
+git fetch origin
+git rebase origin/main          # fix conflicts, then: git add <files> && git rebase --continue
+git push --force-with-lease     # only on your own branch
+```
+
+### Pull requests
+
+- Target `main`. Keep the pull request focused; split unrelated changes.
+- The **title** must follow the commit message rules, because it becomes the commit on `main` (pull requests are
+  squash-merged). Describe what changed and why, how you tested it, and link the issue.
+- CI must pass (SwiftLint, build and tests, and the conventions check) and the branch must be up to date with `main`.
+- A maintainer review is required. Address review comments with new commits; they are squashed on merge.
+- Update `CHANGELOG.md` for user-visible changes.
 
 ### Code guidelines
 
@@ -50,4 +122,4 @@ Helpers are characters or machines that clear settled snow. The checklist is als
 
 ## Code of conduct
 
-Be kind and assume good intent. Harassment and personal attacks are not welcome.
+See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Be kind and assume good intent.
