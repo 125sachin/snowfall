@@ -1,31 +1,44 @@
 # Testing
 
-## Automated (`xcodebuild … test`)
-70 XCTest cases: gravity/terminal velocity, wind, drag, velocity clamp, pool capacity/reuse, determinism,
-huge timesteps, pointer impulse (direction, falloff, radius, zero-distance, bound), collision response,
-broad phase, height-field deposit/relax/clip/shed/remap (volume conservation), moving-window displacement
-(stationary, slow drag, fast move, vertical, resize, close, landing on lower surface, rapid movement),
-AX↔AppKit coordinate conversion (displays above/left, scale), window eligibility/identity/velocity, settings
-validation/persistence/migration.
+## Automated
 
-## Measured (this machine: Apple M5, macOS 26.6.2)
-- Simulation step, 3000 particles + 1 surface, **Debug** build: 1.12 ms/step (`testSimulationStepCost`).
-- Release app, 1 built-in display (scale 2×), default settings (~1000 particles), single short sample with
-  `top`: ≈ 8–14 % of one core, ≈ 150 MB. This is a rough sample, **not** an Instruments profile. Frame time and
-  GPU cost were not profiled; FPS is shown in Settings → Performance → Show diagnostics.
-- Render FPS in diagnostics is an inter-frame EMA across all overlays; with several displays it overstates FPS.
+```sh
+xcodebuild -scheme Snowfall -destination 'platform=macOS' test
+```
 
-## Manual matrix (status)
+The suite covers the pure logic and the simulation, which is deterministic (seeded) and runs headless:
+
+- gravity, wind, drag, particle pool limits and determinism
+- collision response and the broad phase
+- the snow height field: deposit, relaxation, clipping, edge shedding, remapping, and volume conservation
+- moving, resizing and closing windows, window eligibility and stacking, rounded corners, and full-screen coverage
+- coordinate conversion between the window server and AppKit
+- every helper: direction of travel, that removed snow is accounted for, and one-helper-at-a-time
+- settings validation, persistence and migration
+
+## Manual checklist
+
+Rendering and window behaviour depend on the real window server, so these are checked by hand. Status is what the
+maintainers have actually verified.
+
 | Item | Status |
 |---|---|
-| Overlay renders transparently over other apps (screenshot, built-in display) | verified |
-| Snow settles along the display bottom | verified (screenshot) |
-| Menu bar item appears | verified (screenshot) |
-| Click-through into Finder/browser, typing, dragging windows | **not yet verified by hand** |
-| Pointer scatters snow | **not yet verified by hand** |
-| Snow on window tops (window-server list, no permission) | snow seen on a window top in a screenshot; move/resize/close/stacking **not yet checked by hand** |
-| External display (same/different scale), display above/left, hot-plug | **not tested** (one display available) |
-| Spaces, Mission Control, full-screen apps | **not tested** |
-| Sleep/wake | **not tested** (clock reset logic is implemented) |
-| Low Power Mode, thermal | **not tested** |
-| Instruments (Time Profiler / Metal System Trace) | **not run** |
+| Overlay is transparent over other apps | verified |
+| Snow settles along the bottom and on window tops, follows window corners | verified |
+| Menu bar item, helpers and the new icon | verified |
+| Click-through into other apps, typing, dragging windows | not yet verified by hand |
+| Pointer scatters snow | not yet verified by hand |
+| Moving, resizing, closing and stacking windows | partly verified |
+| External displays (same or different scale), display above/left, hot-plug | not tested (one display available) |
+| Spaces, Mission Control, full-screen apps | not tested |
+| Sleep and wake | not tested (clock reset is implemented) |
+| Low Power Mode and thermal throttling | not tested |
+| Profiling with Instruments | not done |
+
+Reports from other setups are very welcome.
+
+## Resource use
+
+A rough sample on an Apple silicon laptop (one Retina display, default settings) with `top`/`footprint`: about
+115 MB resident while snow is visible (46 MB of that is the two full-screen drawables), about 27 MB with the overlay
+hidden, and low single-digit CPU. This is not an Instruments profile.

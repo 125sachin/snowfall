@@ -1,6 +1,7 @@
 # Building Snowfall
 
-Requirements: macOS 14+ (built on 26.6), Xcode 26 (Swift 6 language mode), XcodeGen (`brew install xcodegen`).
+Requirements: macOS 14 or later, Xcode 26 (Swift 6 language mode) and [XcodeGen](https://github.com/yonaskolb/XcodeGen)
+(`brew install xcodegen`).
 
 ```sh
 xcodegen generate                       # creates Snowfall.xcodeproj from project.yml
@@ -10,11 +11,22 @@ xcodebuild -scheme Snowfall -configuration Release -destination 'platform=macOS'
 open build/Build/Products/Release/Snowfall.app
 ```
 
+The Xcode project is generated and not committed. Change targets and settings in `project.yml`, then run
+`xcodegen generate` again.
+
+## Disk image
+
+`scripts/make_dmg.sh` builds a Release app and writes `dist/Snowfall-<version>.dmg` (ad-hoc signed). The version comes
+from `MARKETING_VERSION` in `project.yml`.
+
 ## Notes
-- **Shaders are embedded** as MSL strings (`Rendering/ShaderSource.swift`) and compiled at launch with
-  `makeLibrary(source:)`. The optional *Metal Toolchain* component was not installed when this was
-  written, and runtime compilation avoids requiring it. If you prefer precompiled `.metal` files, run
+
+- **Shaders are embedded** as strings in `Rendering/ShaderSource.swift` and compiled at launch, so the optional Metal
+  Toolchain component is not required. To use precompiled `.metal` files instead, install it with
   `xcodebuild -downloadComponent MetalToolchain` and move the sources into `.metal` files.
-- The bundle identifier is the placeholder `com.xcode.snowfall`; signing is ad-hoc (`-`).
-  Set your team and identifier in `project.yml` (`PRODUCT_BUNDLE_IDENTIFIER`, `DEVELOPMENT_TEAM`).
-- The app is `LSUIElement` (menu bar only, no Dock icon). There is no app icon yet (empty AppIcon set).
+- **Signing:** the project uses ad-hoc signing (`CODE_SIGN_IDENTITY: "-"`, "Sign to Run Locally"), so it builds and runs
+  without an Apple Developer account. The bundle identifier is `com.xcode.snowfall`. To use your own, change
+  `PRODUCT_BUNDLE_IDENTIFIER` and set `DEVELOPMENT_TEAM` in `project.yml`.
+- **Architecture:** by default Xcode builds for your Mac's architecture. For a universal binary add
+  `ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO` to the `xcodebuild` command.
+- The app is menu-bar only (`LSUIElement`), so it has no Dock icon while running.
