@@ -1,0 +1,37 @@
+included:
+  - Snowfall
+  - Tests
+  - tools
+excluded:
+  - build
+  - dist
+  - Snowfall.xcodeproj
+
+# Style that matches the existing code base. Tighten these over time rather than in one big change.
+disabled_rules:
+  - identifier_name
+  - type_name
+  - large_tuple
+  - function_parameter_count
+  - cyclomatic_complexity
+  - function_body_length
+  - type_body_length
+  - file_length
+  - nesting
+  - todo
+  - comma
+  - statement_position
+  - force_try
+  - xctfail_message
+  - trailing_comma
+
+opt_in_rules:
+  - empty_count
+  - closure_spacing
+  - redundant_nil_coalescing
+
+line_length:
+  warning: 250
+  error: 300
+  ignores_comments: true
+  ignores_urls: true
