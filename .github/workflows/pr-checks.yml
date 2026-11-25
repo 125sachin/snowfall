@@ -1,0 +1,59 @@
+name: Pull request checks
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  conventions:
+    name: Conventions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Branch name
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: scripts/check_branch_name.sh "$HEAD_REF"
+
+      - name: Pull request title (used as the squash commit message)
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: printf '%s\n' "$PR_TITLE" | scripts/check_commit_msg.sh -
+
+      - name: Commit messages
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          status=0
+          for sha in $(git rev-list --no-merges "$BASE_SHA..$HEAD_SHA"); do
+            git log -1 --format=%B "$sha" | scripts/check_commit_msg.sh - || status=1
+          done
+          exit $status
+
+      - name: Conflict markers and build artifacts
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: scripts/check_conflict_markers.sh "$BASE_SHA"
+
+      - name: Branch is up to date with main
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          git fetch --quiet origin "$BASE_REF"
+          behind="$(git rev-list --count "HEAD..origin/$BASE_REF")"
+          if [ "$behind" -gt 0 ]; then
+            echo "::error::This branch is $behind commit(s) behind $BASE_REF. Rebase it: git fetch origin && git rebase origin/$BASE_REF"
+            exit 1
+          fi
