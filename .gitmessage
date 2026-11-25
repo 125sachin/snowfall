@@ -1,0 +1,8 @@
+# <type>(<optional-scope>): <imperative description, lowercase, no period, max 72 characters>
+#
+# Why this change is needed (wrap at 100 characters). Leave the line above blank.
+#
+# Breaking change: add "!" after the type, and a "BREAKING CHANGE: <what>" footer.
+# Fixes #123
+#
+# Types: feat fix docs style refactor perf test build ci chore revert
