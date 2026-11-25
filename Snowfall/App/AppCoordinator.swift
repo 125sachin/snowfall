@@ -78,6 +78,11 @@ final class AppCoordinator {
         // otherwise throttle an accessory app with no visible UI of its own).
         activity = ProcessInfo.processInfo.beginActivity(
             options: [.userInitiatedAllowingIdleSystemSleep], reason: "Snowfall animation")
+        // Re-evaluate the "automatic" backdrop when the system switches between light and dark.
+        observers.append(DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("AppleInterfaceThemeChangedNotification"), object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.applyAll() }
+        })
         // Another app activating or a Space change can reorder windows; re-assert the overlays.
         let ws2 = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.didActivateApplicationNotification, NSWorkspace.activeSpaceDidChangeNotification] {
@@ -164,6 +169,17 @@ final class AppCoordinator {
         applyAll()
     }
 
+    /// 1 when snow should be outlined for a light background, 0 for a dark one.
+    private func backdropContrast(_ mode: BackdropMode) -> Float {
+        switch mode {
+        case .light: return 1
+        case .dark: return 0
+        case .auto:
+            let dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return dark ? 0 : 1
+        }
+    }
+
     /// True when the Mac is running on battery (snow looks fine at 30 FPS and costs far less).
     private static func onBattery() -> Bool {
         guard let info = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
@@ -209,7 +225,7 @@ final class AppCoordinator {
 
         if s.snowfallEnabled && !suspended && !enabled.isEmpty {
             overlays.reconcile(displays: enabled)
-            overlays.setState(fps: fps, paused: isPaused, showBorders: s.showSurfaceDebug)
+            overlays.setState(fps: fps, paused: isPaused, showBorders: s.showSurfaceDebug, contrast: backdropContrast(s.backdrop))
         } else if s.snowfallEnabled == false || enabled.isEmpty {
             overlays.tearDown()
         } else {

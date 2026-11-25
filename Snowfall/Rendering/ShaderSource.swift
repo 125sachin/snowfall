@@ -33,11 +33,13 @@ enum ShaderSource {
 
     // Snow crystal: six-fold symmetric. The plane is folded into one 30-degree wedge so only a
     // single arm (along +x) and its branches are described; the fold mirrors it into all six arms.
-    fragment float4 particle_fragment(ParticleOut in [[stage_in]], texture2d<float> crystal [[texture(0)]]) {
+    fragment float4 particle_fragment(ParticleOut in [[stage_in]], texture2d<float> crystal [[texture(0)]],
+                                      constant float &contrast [[buffer(0)]]) {
+        const float3 outlineColor = float3(0.36, 0.50, 0.74);   // cool blue edge for light backgrounds
         if (in.seed >= 2.0) {                         // steam puff: soft, warm-white, no crystal
             float rr = length(in.uv);
             float a = smoothstep(1.0, 0.0, rr) * in.opacity * 0.75;
-            return float4(float3(1.0, 0.96, 0.92) * a, a);
+            return float4(mix(float3(1.0, 0.96, 0.92), float3(0.72, 0.78, 0.88), contrast) * a, a);
         }
         float spin = in.rot + in.seed * 6.2831;
         float cs = cos(spin), sn = sin(spin);
@@ -46,7 +48,7 @@ enum ShaderSource {
 
         if (in.radius < 1.7) {                       // too small to resolve: soft dot
             float a = smoothstep(1.0, 0.35, r) * in.opacity;
-            return float4(float3(1.0) * a, a);
+            return float4(mix(float3(1.0), float3(0.60, 0.72, 0.92), contrast * 0.75) * a, a);
         }
 
         float aa = max(fwidth(r), 0.03);
@@ -58,7 +60,12 @@ enum ShaderSource {
             float m = crystal.sample(smp, tuv).a;
             float a2 = clamp(pow(m, 0.55) * 1.35, 0.0, 1.0) * in.opacity;   // thin strokes: keep them solid when minified
             float3 c2 = mix(float3(1.0), float3(0.88, 0.94, 1.0), smoothstep(0.3, 1.0, r));
-            return float4(c2 * a2, a2);
+            // Light backdrop: a blurred, grown copy of the mask behind the shape forms a soft cool outline.
+            float grown = clamp(crystal.sample(smp, tuv, level(1.5)).a * 3.4, 0.0, 1.0) * in.opacity;
+            float aEdge = max(a2, grown);
+            float4 plain = float4(c2 * a2, a2);
+            float4 outlined = float4(c2 * a2 + outlineColor * aEdge * (1.0 - a2), a2 + aEdge * (1.0 - a2));
+            return mix(plain, outlined, contrast);
         }
 
         const float sector = 1.0471976;              // 60 degrees
@@ -75,11 +82,14 @@ enum ShaderSource {
         d = min(d, segDist(q, float2(0.62, 0.0), float2(0.62, 0.0) + dir * 0.23) - w * 0.92);
 
         float a = clamp((1.0 - smoothstep(-aa, aa, d)) * 1.15, 0.0, 1.0) * in.opacity;
+        float aEdge = clamp((1.0 - smoothstep(-aa, aa, d - 0.085)) * 1.1, 0.0, 1.0) * in.opacity;
         // Icy shading: bright core, cooler blue toward the tips.
         float3 col = mix(float3(1.0), float3(0.88, 0.94, 1.0), smoothstep(0.3, 1.0, r));
         // Faint cool halo so crystals stay visible over white windows.
         float halo = 0.22 * (1.0 - smoothstep(0.0, 0.22, max(d, 0.0))) * (1.0 - a) * in.opacity;
-        return float4(col * a + float3(0.38, 0.5, 0.68) * halo, a + halo);
+        float4 plain = float4(col * a + float3(0.38, 0.5, 0.68) * halo, a + halo);
+        float4 outlined = float4(col * a + outlineColor * aEdge * (1.0 - a), a + aEdge * (1.0 - a));
+        return mix(plain, outlined, contrast);
     }
 
     struct DebugRect { float4 rect; float4 color; };
@@ -131,8 +141,8 @@ enum ShaderSource {
     using namespace metal;
 
     struct ViewUniforms { float2 origin; float2 size; };
-    struct SurfaceUniforms { float minX; float baseY; float binWidth; uint binCount; uint heightOffset; float maxDepth; float cornerRadius; };
-    struct SurfaceOut { float4 position [[position]]; float shade; float alpha; };
+    struct SurfaceUniforms { float minX; float baseY; float binWidth; uint binCount; uint heightOffset; float maxDepth; float cornerRadius; float contrast; };
+    struct SurfaceOut { float4 position [[position]]; float shade; float alpha; float contrast; };
 
     static float hash11(float n) { return fract(sin(n * 127.1) * 43758.5453); }
 
@@ -162,17 +172,20 @@ enum ShaderSource {
         }
         float alpha = 1.0, shade = 0.0;
         if (band == 0) { y += yi == 1 ? h : 0.0; shade = float(yi); }
-        else { y += h + (yi == 1 ? 1.8 : 0.0); shade = 1.0; alpha = yi == 1 ? 0.0 : 1.0; }
+        else { y += h + (yi == 1 ? 1.8 : 0.0); shade = 2.0; alpha = yi == 1 ? 0.0 : 1.0; }   // shade 2 = soft rim
         alpha *= smoothstep(0.02, 0.5, h);
         float2 local = float2(s.minX + float(edge) * s.binWidth, y) - u.origin;
         SurfaceOut o;
         o.position = float4((local / u.size) * 2.0 - 1.0, 0.0, 1.0);
-        o.shade = shade; o.alpha = alpha;
+        o.shade = shade; o.alpha = alpha; o.contrast = s.contrast;
         return o;
     }
 
     fragment float4 surface_fragment(SurfaceOut in [[stage_in]]) {
-        float3 c = mix(float3(0.80, 0.86, 0.94), float3(1.0), in.shade);
+        float3 body = mix(float3(0.80, 0.86, 0.94), float3(0.64, 0.74, 0.90), in.contrast);   // bluer on light backgrounds
+        float3 top = mix(float3(1.0), float3(0.97, 0.985, 1.0), in.contrast);
+        float3 rim = mix(float3(1.0), float3(0.40, 0.54, 0.78), in.contrast);                  // cool outline along the top
+        float3 c = in.shade > 1.5 ? rim : mix(body, top, in.shade);
         float a = in.alpha * 0.97;
         return float4(c * a, a);
     }
