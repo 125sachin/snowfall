@@ -13,12 +13,12 @@ final class MouseTracker {
 
     var isRunning: Bool { timer != nil }
 
-    func start(hz: Double = 60) {
+    func start(hz: Double = 30) {
         guard timer == nil else { return }
         timer = Timer.scheduledTimer(withTimeInterval: 1 / hz, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.sample() }
         }
-        timer?.tolerance = 0.004
+        timer?.tolerance = 0.008
     }
 
     func stop() {

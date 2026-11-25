@@ -1,4 +1,5 @@
 import AppKit
+import IOKit.ps
 import Observation
 
 /// Owns app-level runtime state and wires settings, displays, tracking, simulation and overlays.
@@ -27,6 +28,10 @@ final class AppCoordinator {
     @ObservationIgnored private var started = false
     @ObservationIgnored private var lastStatus = ""
     @ObservationIgnored private var activity: NSObjectProtocol?
+    @ObservationIgnored private var statTicks = 0
+    @ObservationIgnored private var coveredDisplays = Set<UInt32>()
+    @ObservationIgnored private var lastIdleLevel = false
+    @ObservationIgnored private var lastOnBattery = false
 
     init(store: SettingsStore = SettingsStore()) {
         self.store = store
@@ -46,7 +51,10 @@ final class AppCoordinator {
         store.onChange = { [weak self] _ in self?.applyAll() }
         overlays.onRendererFailure = { [weak self] msg in self?.rendererError = msg }
         mouse.onSample = { [simulation] in simulation.updatePointer($0) }
-        windows.onSnapshots = { [simulation] in simulation.updateWindows($0) }
+        windows.onSnapshots = { [weak self, simulation] snaps in
+            simulation.updateWindows(snaps)
+            Task { @MainActor in self?.updateCoverage(snaps) }
+        }
 
         let nc = NotificationCenter.default
         let ws = NSWorkspace.shared.notificationCenter
@@ -69,7 +77,7 @@ final class AppCoordinator {
         // Keep timers and display links running while another app is frontmost (App Nap would
         // otherwise throttle an accessory app with no visible UI of its own).
         activity = ProcessInfo.processInfo.beginActivity(
-            options: [.userInitiated, .latencyCritical], reason: "Snowfall animation")
+            options: [.userInitiatedAllowingIdleSystemSleep], reason: "Snowfall animation")
         // Another app activating or a Space change can reorder windows; re-assert the overlays.
         let ws2 = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.didActivateApplicationNotification, NSWorkspace.activeSpaceDidChangeNotification] {
@@ -125,6 +133,24 @@ final class AppCoordinator {
 
     // MARK: Wiring
 
+    /// A full-screen app hides our overlay on that display; when every enabled display is covered
+    /// the simulation and drawing stop entirely until a window uncovers one.
+    private func updateCoverage(_ snaps: [WindowSnapshot]) {
+        guard started, windowsRunning else { return }
+        let enabled = displays.filter { !store.settings.disabledDisplays.contains($0.uuid) }
+        let ids = WindowEligibility.coveredDisplays(snapshots: snaps, displays: enabled,
+                                                    ownPID: ProcessInfo.processInfo.processIdentifier)
+        guard ids != coveredDisplays else { return }
+        coveredDisplays = ids
+        overlays.setCovered(ids)
+        applyAll()
+    }
+
+    /// Seconds since the last keyboard/mouse event (reads the system idle counter only).
+    private static func idleSeconds() -> Double {
+        CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
+    }
+
     private func displaysChanged() {
         displays = DisplayDescriptor.current()
         applyAll()
@@ -138,9 +164,17 @@ final class AppCoordinator {
         applyAll()
     }
 
+    /// True when the Mac is running on battery (snow looks fine at 30 FPS and costs far less).
+    private static func onBattery() -> Bool {
+        guard let info = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
+              let type = IOPSGetProvidingPowerSourceType(info)?.takeUnretainedValue() as String? else { return false }
+        return type == kIOPSBatteryPowerValue
+    }
+
     private func effectiveFPS(_ s: SnowfallSettings) -> Int {
         let pi = ProcessInfo.processInfo
-        if s.lowPowerMode || pi.isLowPowerModeEnabled { return 30 }
+        if lastIdleLevel { return 15 }          // user away: a slow, cheap snowfall
+        if s.lowPowerMode || pi.isLowPowerModeEnabled || Self.onBattery() { return 30 }
         switch s.targetFrameRate {
         case .fps30: return 30
         case .fps60: return 60
@@ -152,6 +186,11 @@ final class AppCoordinator {
         let s = store.settings
         let enabled = displays.filter { !s.disabledDisplays.contains($0.uuid) }
         let running = s.snowfallEnabled && !isPaused && !suspended && !enabled.isEmpty
+        if !(running && s.windowPhysicsEnabled), !coveredDisplays.isEmpty {   // no window data -> no coverage
+            coveredDisplays = []; overlays.setCovered([])
+        }
+        let allCovered = !enabled.isEmpty && enabled.allSatisfy { coveredDisplays.contains($0.id) }
+        let simRunning = running && !allCovered
         let lowPower = s.lowPowerMode || ProcessInfo.processInfo.isLowPowerModeEnabled
         let fps = effectiveFPS(s)
         let windowPhysics = s.windowPhysicsEnabled
@@ -159,7 +198,7 @@ final class AppCoordinator {
         if status != lastStatus { lastStatus = status; SnowfallLogger.app.info("\(status, privacy: .public)") }
 
         let ss = SimulationSettings(
-            running: running, density: s.particleDensity, wind: s.windStrength, fallSpeed: s.fallSpeed,
+            running: simRunning, density: s.particleDensity, wind: s.windStrength, fallSpeed: s.fallSpeed,
             opacity: s.particleOpacity, maxParticles: s.maxParticles, accumulation: s.accumulationEnabled,
             maxDepth: s.maxAccumulationDepth, pointerEnabled: s.pointerInteractionEnabled,
             pointerRadius: s.pointerRadius, pointerStrength: s.pointerStrength, windowPhysics: windowPhysics,
@@ -178,7 +217,7 @@ final class AppCoordinator {
         }
         overlayCount = overlays.overlayCount
 
-        if running && s.pointerInteractionEnabled { mouse.start() } else { mouse.stop() }
+        if simRunning && s.pointerInteractionEnabled { mouse.start() } else { mouse.stop() }
 
         let wantWindows = running && windowPhysics
         if wantWindows { windows.start(lowPower: lowPower); windowsRunning = true }
@@ -187,6 +226,15 @@ final class AppCoordinator {
 
     private func refreshStats() {
         guard started else { return }
+        statTicks += 1
+        if statTicks % 10 == 0 {
+            let battery = Self.onBattery()
+            if battery != lastOnBattery { lastOnBattery = battery; applyAll() }
+        }
+        if statTicks % 5 == 0 {
+            let idle = Self.idleSeconds() >= 180
+            if idle != lastIdleLevel { lastIdleLevel = idle; applyAll() }
+        }
         stats = simulation.latestSnapshot().stats
         reading = monitor.reading()
     }

@@ -218,7 +218,7 @@ extension PhysicsWorld {
                 for j in i..<min(last + 1, i + win) { vol += f.height(atBin: j) * f.binWidth }
                 if best == nil || vol > best!.volume {
                     let cx = sf.minX + (Float(min(last, i + win / 2)) + 0.5) * f.binWidth
-                    best = (cx, sf.topY + f.height(atLocalX: cx - sf.minX), sf.id, vol)
+                    best = (cx, sf.topY(atX: cx) + f.height(atLocalX: cx - sf.minX), sf.id, vol)
                 }
                 i += stride
             }

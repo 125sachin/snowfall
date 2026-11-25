@@ -37,7 +37,7 @@ final class WindowTracker: @unchecked Sendable {
 
     private func schedule(after delay: TimeInterval) {
         let t = DispatchSource.makeTimerSource(queue: queue)
-        t.schedule(deadline: .now() + delay, leeway: .milliseconds(10))
+        t.schedule(deadline: .now() + delay, leeway: .milliseconds(50))
         t.setEventHandler { [weak self] in
             guard let self else { return }
             self.timer?.cancel()

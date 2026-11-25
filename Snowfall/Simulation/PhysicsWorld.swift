@@ -237,8 +237,10 @@ final class PhysicsWorld {
         for ci in cand {
             let s = ordered[ci]
             let sf = s.surface
-            guard x >= sf.minX, x <= sf.maxX, prevY >= sf.topY - 0.001 else { continue }
-            let eff = sf.topY + (config.accumulationEnabled ? s.field.height(atLocalX: x - sf.minX) : 0)
+            guard x >= sf.minX, x <= sf.maxX else { continue }
+            let base = sf.topY(atX: x)
+            guard prevY >= base - 0.001 else { continue }
+            let eff = base + (config.accumulationEnabled ? s.field.height(atLocalX: x - sf.minX) : 0)
             if p.position.y <= eff && eff > bestY { best = s; bestY = eff }
         }
         guard let s = best else { return false }
@@ -527,7 +529,7 @@ final class PhysicsWorld {
             if config.accumulationEnabled, !st.field.isEmpty {
                 s.surfaces.append(RenderSurface(minX: sf.minX, baseY: sf.topY, binWidth: st.field.binWidth,
                                                 binCount: st.field.binCount, heightOffset: s.heights.count,
-                                                maxDepth: st.field.maxDepth))
+                                                maxDepth: st.field.maxDepth, cornerRadius: sf.cornerRadius))
                 let hidden = occludedSpans(for: st)
                 for b in 0..<st.field.binCount {
                     let cx = sf.minX + (Float(b) + 0.5) * st.field.binWidth

@@ -5,7 +5,7 @@ import os
 /// immutable snapshots for renderers. All mutable state is confined to `queue`; the only shared
 /// data is the lock-protected snapshot, so renderers never wait on physics.
 final class SimulationCoordinator: @unchecked Sendable {
-    private let queue = DispatchQueue(label: "snowfall.simulation", qos: .userInteractive)
+    private let queue = DispatchQueue(label: "snowfall.simulation", qos: .userInitiated)
     private let monitor: PerformanceMonitor
     private let snapshotLock = OSAllocatedUnfairLock(initialState: RenderSnapshot())
 
@@ -111,7 +111,7 @@ final class SimulationCoordinator: @unchecked Sendable {
         timer?.cancel()
         let t = DispatchSource.makeTimerSource(queue: queue)
         let interval = 1.0 / max(15, targetFPS)
-        t.schedule(deadline: .now(), repeating: interval, leeway: .milliseconds(2))
+        t.schedule(deadline: .now(), repeating: interval, leeway: .milliseconds(4))
         t.setEventHandler { [weak self] in self?.tick() }
         lastTick = DispatchTime.now().uptimeNanoseconds
         accumulator = 0

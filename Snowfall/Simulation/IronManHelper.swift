@@ -119,7 +119,7 @@ extension PhysicsWorld {
             return miss
         }
         let local = tx - st.surface.minX
-        let spot = SIMD2(tx, st.surface.topY + st.field.height(atLocalX: local))
+        let spot = SIMD2(tx, st.surface.topY(atX: tx) + st.field.height(atLocalX: local))
         let melted = meltSnow(on: st, atLocalX: local, dt: dt * m.intensity)
         m.steamAccumulator += melted / 5                           // steam rises where snow melts
         var n = 0

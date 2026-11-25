@@ -17,6 +17,7 @@ struct RenderSurface: Sendable {
     var binCount: Int
     var heightOffset: Int
     var maxDepth: Float
+    var cornerRadius: Float = 0
 }
 
 /// Layout matches `DebugRect` in the Metal source (32 bytes): rect = (x, y, w, h), then colour.

@@ -22,6 +22,8 @@ enum WindowEligibility {
     static let minSize = CGSize(width: 100, height: 60)
     /// A window must have this much clearance below the top of the visible area to hold snow.
     static let topClearance: CGFloat = 24
+    /// Typical top-corner radius of a macOS window (pt).
+    static let cornerRadius: Float = 16
 
     static func isEligible(_ w: WindowSnapshot, displays: [DisplayDescriptor], ownPID: pid_t) -> Bool {
         guard w.processID != ownPID, w.isVisible, !w.isMinimized else { return false }
@@ -30,6 +32,22 @@ enum WindowEligibility {
         guard let d = displays.first(where: { $0.frame.intersects(w.frame) }) else { return false }
         let top = w.frame.maxY
         return top <= d.visibleFrame.maxY - topClearance && top >= d.visibleFrame.minY + 10
+    }
+}
+
+extension WindowEligibility {
+    /// Displays whose front-most window fills the whole display (a full-screen app, which also
+    /// hides the menu bar). Snow behind it is invisible, so it is not worth drawing.
+    /// `snapshots` are in any order; `zRank` decides which window is in front.
+    static func coveredDisplays(snapshots: [WindowSnapshot], displays: [DisplayDescriptor], ownPID: pid_t) -> Set<UInt32> {
+        var covered = Set<UInt32>()
+        let others = snapshots.filter { $0.processID != ownPID && $0.isVisible && !$0.isMinimized }
+        for d in displays {
+            let front = others.filter { $0.frame.intersects(d.frame.insetBy(dx: 2, dy: 2)) }
+                              .min { $0.zRank < $1.zRank }
+            if let f = front, f.frame.insetBy(dx: -2, dy: -2).contains(d.frame) { covered.insert(d.id) }
+        }
+        return covered
     }
 }
 
@@ -56,7 +74,8 @@ struct SurfaceBuilder {
                 }
             }
             next[w.id] = (w.frame, w.timestamp, v)
-            result.append(CollisionSurface(id: "window-\(w.id)", frame: w.frame, velocity: v, kind: .windowTop, zRank: w.zRank))
+            result.append(CollisionSurface(id: "window-\(w.id)", frame: w.frame, velocity: v, kind: .windowTop, zRank: w.zRank,
+                                           cornerRadius: WindowEligibility.cornerRadius))
         }
         previous = next
         return result

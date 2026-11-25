@@ -19,6 +19,7 @@ private struct SpriteUniforms { var center: SIMD2<Float>; var size: SIMD2<Float>
 private struct SurfaceUniforms {
     var minX: Float; var baseY: Float; var binWidth: Float
     var binCount: UInt32; var heightOffset: UInt32; var maxDepth: Float
+    var cornerRadius: Float
 }
 
 /// Draws one display's share of the snow. Reads immutable snapshots; never touches physics.
@@ -38,13 +39,15 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
     private let surfacePipeline: MTLRenderPipelineState
     private let debugPipeline: MTLRenderPipelineState
     private let spritePipeline: MTLRenderPipelineState
-    private let bodyTexture: MTLTexture?
-    private let wheelTexture: MTLTexture?
-    private let santaTexture: MTLTexture?
-    private let wandTexture: MTLTexture?
-    private let ironTextures: IronManSprites.Textures?
-    private let thorTextures: ThorSprites.Textures?
-    private let spiderTextures: SpiderSprites.Textures?
+    private let crystalTexture: MTLTexture?
+    // Helper artwork is rasterised on first use (a helper that never runs costs no memory) and
+    // released again once no helper has been drawn for a while.
+    private var jcbTextures: (body: MTLTexture, wheel: MTLTexture)?
+    private var santaTextures: (body: MTLTexture, wand: MTLTexture)?
+    private var ironTextures: IronManSprites.Textures?
+    private var thorTextures: ThorSprites.Textures?
+    private var spiderTextures: SpiderSprites.Textures?
+    private var lastHelperDraw: CFTimeInterval = 0
     private let inFlight = DispatchSemaphore(value: 2)
     private var ring = 0
     private var particleBuffers: [MTLBuffer] = []
@@ -93,13 +96,7 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         debugPipeline = try pipeline(lib, "debug_vertex", "debug_fragment")
         surfacePipeline = try pipeline(surfLib, "surface_vertex", "surface_fragment")
         spritePipeline = try pipeline(lib, "sprite_vertex", "sprite_fragment")
-        let tex = VehicleSprites.makeTextures(device: device)
-        bodyTexture = tex?.body; wheelTexture = tex?.wheel
-        let santa = SantaSprites.makeTextures(device: device)
-        santaTexture = santa?.body; wandTexture = santa?.wand
-        ironTextures = IronManSprites.makeTextures(device: device)
-        thorTextures = ThorSprites.makeTextures(device: device)
-        spiderTextures = SpiderSprites.makeTextures(device: device)
+        crystalTexture = CrystalSprite.makeTexture(device: device)
 
         func buf(_ bytes: Int) throws -> MTLBuffer {
             guard let b = device.makeBuffer(length: bytes, options: .storageModeShared) else {
@@ -179,30 +176,48 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
             var u = ViewUniforms(origin: SIMD2(Float(f.minX), Float(f.minY)), size: SIMD2(Float(f.width), Float(f.height)))
             for (s, off) in visibleSurfaces {
                 var su = SurfaceUniforms(minX: s.minX, baseY: s.baseY, binWidth: s.binWidth,
-                                         binCount: UInt32(s.binCount), heightOffset: UInt32(off), maxDepth: s.maxDepth)
+                                         binCount: UInt32(s.binCount), heightOffset: UInt32(off), maxDepth: s.maxDepth,
+                                         cornerRadius: s.cornerRadius)
                 enc.setRenderPipelineState(surfacePipeline)
                 enc.setVertexBuffer(hBuf, offset: 0, index: 0)
                 enc.setVertexBytes(&su, length: MemoryLayout<SurfaceUniforms>.stride, index: 1)
                 enc.setVertexBytes(&u, length: MemoryLayout<ViewUniforms>.stride, index: 2)
                 enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: s.binCount * 12)
             }
-            if let body = bodyTexture, let wheel = wheelTexture {
-                for v in snap.vehicles { drawVehicle(v, body: body, wheel: wheel, encoder: enc, uniforms: &u, frame: f) }
+            let anyHelper = !(snap.vehicles.isEmpty && snap.santas.isEmpty && snap.spiders.isEmpty
+                              && snap.thors.isEmpty && snap.ironMen.isEmpty)
+            if anyHelper { lastHelperDraw = CACurrentMediaTime() }
+            if !snap.vehicles.isEmpty {
+                if jcbTextures == nil { jcbTextures = VehicleSprites.makeTextures(device: device) }
+                if let t = jcbTextures {
+                    for v in snap.vehicles { drawVehicle(v, body: t.body, wheel: t.wheel, encoder: enc, uniforms: &u, frame: f) }
+                }
             }
-            if let body = santaTexture, let wand = wandTexture {
-                for sa in snap.santas { drawSanta(sa, body: body, wand: wand, encoder: enc, uniforms: &u, frame: f) }
+            if !snap.santas.isEmpty {
+                if santaTextures == nil, let t = SantaSprites.makeTextures(device: device) { santaTextures = (t.body, t.wand) }
+                if let t = santaTextures {
+                    for sa in snap.santas { drawSanta(sa, body: t.body, wand: t.wand, encoder: enc, uniforms: &u, frame: f) }
+                }
             }
-            if let tex = spiderTextures {
-                for sp in snap.spiders { drawSpider(sp, textures: tex, encoder: enc, uniforms: &u, frame: f) }
+            if !snap.spiders.isEmpty {
+                if spiderTextures == nil { spiderTextures = SpiderSprites.makeTextures(device: device) }
+                if let tex = spiderTextures { for sp in snap.spiders { drawSpider(sp, textures: tex, encoder: enc, uniforms: &u, frame: f) } }
             }
-            if let tex = thorTextures {
-                for th in snap.thors { drawThor(th, textures: tex, encoder: enc, uniforms: &u, frame: f) }
+            if !snap.thors.isEmpty {
+                if thorTextures == nil { thorTextures = ThorSprites.makeTextures(device: device) }
+                if let tex = thorTextures { for th in snap.thors { drawThor(th, textures: tex, encoder: enc, uniforms: &u, frame: f) } }
             }
-            if let tex = ironTextures {
-                for m in snap.ironMen { drawIronMan(m, textures: tex, encoder: enc, uniforms: &u, frame: f) }
+            if !snap.ironMen.isEmpty {
+                if ironTextures == nil { ironTextures = IronManSprites.makeTextures(device: device) }
+                if let tex = ironTextures { for m in snap.ironMen { drawIronMan(m, textures: tex, encoder: enc, uniforms: &u, frame: f) } }
+            }
+            if !anyHelper, lastHelperDraw > 0, CACurrentMediaTime() - lastHelperDraw > 20 {
+                jcbTextures = nil; santaTextures = nil; ironTextures = nil; thorTextures = nil; spiderTextures = nil
+                lastHelperDraw = 0
             }
             if pc > 0 {
                 enc.setRenderPipelineState(particlePipeline)
+                enc.setFragmentTexture(crystalTexture, index: 0)
                 enc.setVertexBuffer(pBuf, offset: 0, index: 0)
                 enc.setVertexBytes(&u, length: MemoryLayout<ViewUniforms>.stride, index: 1)
                 enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4, instanceCount: pc)

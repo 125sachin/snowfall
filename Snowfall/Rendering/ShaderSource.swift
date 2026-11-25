@@ -33,7 +33,7 @@ enum ShaderSource {
 
     // Snow crystal: six-fold symmetric. The plane is folded into one 30-degree wedge so only a
     // single arm (along +x) and its branches are described; the fold mirrors it into all six arms.
-    fragment float4 particle_fragment(ParticleOut in [[stage_in]]) {
+    fragment float4 particle_fragment(ParticleOut in [[stage_in]], texture2d<float> crystal [[texture(0)]]) {
         if (in.seed >= 2.0) {                         // steam puff: soft, warm-white, no crystal
             float rr = length(in.uv);
             float a = smoothstep(1.0, 0.0, rr) * in.opacity * 0.75;
@@ -50,32 +50,33 @@ enum ShaderSource {
         }
 
         float aa = max(fwidth(r), 0.03);
-        float s1 = fract(in.seed * 7.13), s2 = fract(in.seed * 13.7), s3 = fract(in.seed * 3.3);
+
+        // Half of all flakes use the bundled SVG artwork (white mask) instead.
+        if (is_null_texture(crystal) == false && in.radius >= 1.7 && fract(in.seed * 5.71) < 0.5) {
+            constexpr sampler smp(filter::linear, mip_filter::linear, address::clamp_to_zero);
+            float2 tuv = float2(uv.x, -uv.y) * 0.5 + 0.5;
+            float m = crystal.sample(smp, tuv).a;
+            float a2 = clamp(pow(m, 0.55) * 1.35, 0.0, 1.0) * in.opacity;   // thin strokes: keep them solid when minified
+            float3 c2 = mix(float3(1.0), float3(0.88, 0.94, 1.0), smoothstep(0.3, 1.0, r));
+            return float4(c2 * a2, a2);
+        }
 
         const float sector = 1.0471976;              // 60 degrees
         float ang = fmod(atan2(uv.y, uv.x) + 6.2831853, sector);
         ang = min(ang, sector - ang);                // 0..30 degrees from the nearest arm axis
         float2 q = float2(cos(ang), sin(ang)) * r;   // arm lies along +x
 
-        float w = 0.075 + 0.04 * s1;
-        float d = segDist(q, float2(0.0, 0.0), float2(0.97, 0.0)) - w;
-        const float2 n30 = float2(0.8660254, 0.5);   // hexagon edge normal (vertices on the arms)
-        if (s3 > 0.74) {                             // hexagonal plate with a hollow centre
-            float hex = dot(q, n30);
-            d = min(d, max(hex - 0.72, -(hex - 0.44)));
-            d = min(d, segDist(q, float2(0.0, 0.0), float2(0.5, 0.0)) - w * 0.6);
-        } else {                                     // dendrite: side branches + hexagonal core
-            const float2 dir = float2(0.5, 0.8660254);
-            float t1 = 0.36 + 0.10 * s2, t2 = 0.63 + 0.08 * s1;
-            float l1 = 0.30 + 0.10 * s1, l2 = 0.20 + 0.08 * s2;
-            d = min(d, segDist(q, float2(t1, 0.0), float2(t1, 0.0) + dir * l1) - w * 0.85);
-            d = min(d, segDist(q, float2(t2, 0.0), float2(t2, 0.0) + dir * l2) - w * 0.75);
-            d = min(d, dot(q, n30) - 0.18);
-        }
+        // Bold six-armed flake with round-capped strokes: a long arm plus two outward-angled
+        // side branches per arm (mirrored into all six arms by the fold).
+        const float w = 0.105;                       // stroke half-width
+        const float2 dir = float2(0.7071068, 0.7071068);
+        float d = segDist(q, float2(0.0, 0.0), float2(0.90, 0.0)) - w;
+        d = min(d, segDist(q, float2(0.36, 0.0), float2(0.36, 0.0) + dir * 0.30) - w * 0.92);
+        d = min(d, segDist(q, float2(0.62, 0.0), float2(0.62, 0.0) + dir * 0.23) - w * 0.92);
 
         float a = clamp((1.0 - smoothstep(-aa, aa, d)) * 1.15, 0.0, 1.0) * in.opacity;
         // Icy shading: bright core, cooler blue toward the tips.
-        float3 col = mix(float3(1.0), float3(0.68, 0.84, 1.0), smoothstep(0.15, 0.95, r));
+        float3 col = mix(float3(1.0), float3(0.88, 0.94, 1.0), smoothstep(0.3, 1.0, r));
         // Faint cool halo so crystals stay visible over white windows.
         float halo = 0.22 * (1.0 - smoothstep(0.0, 0.22, max(d, 0.0))) * (1.0 - a) * in.opacity;
         return float4(col * a + float3(0.38, 0.5, 0.68) * halo, a + halo);
@@ -130,7 +131,7 @@ enum ShaderSource {
     using namespace metal;
 
     struct ViewUniforms { float2 origin; float2 size; };
-    struct SurfaceUniforms { float minX; float baseY; float binWidth; uint binCount; uint heightOffset; float maxDepth; };
+    struct SurfaceUniforms { float minX; float baseY; float binWidth; uint binCount; uint heightOffset; float maxDepth; float cornerRadius; };
     struct SurfaceOut { float4 position [[position]]; float shade; float alpha; };
 
     static float hash11(float n) { return fract(sin(n * 127.1) * 43758.5453); }
@@ -151,6 +152,14 @@ enum ShaderSource {
         // Irregular silhouette: deterministic per-edge wobble that scales with depth.
         h = max(0.0, h + (hash11(float(edge) + s.minX * 0.013) - 0.5) * min(1.6, h * 0.18));
         float y = s.baseY;
+        // Rounded window corners: the base follows a quarter circle at each end.
+        float width = float(s.binCount) * s.binWidth;
+        float r = min(s.cornerRadius, width * 0.5);
+        if (r > 0.0) {
+            float lx = float(edge) * s.binWidth;
+            float d = clamp(min(lx, width - lx), 0.0, r);
+            y -= r - sqrt(max(0.0, r * r - (r - d) * (r - d)));
+        }
         float alpha = 1.0, shade = 0.0;
         if (band == 0) { y += yi == 1 ? h : 0.0; shade = float(yi); }
         else { y += h + (yi == 1 ? 1.8 : 0.0); shade = 1.0; alpha = yi == 1 ? 0.0 : 1.0; }

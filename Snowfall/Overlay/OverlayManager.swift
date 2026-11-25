@@ -18,6 +18,8 @@ final class OverlayManager {
     private var paused = false
     private var showBorders = false
     private var hidden = false
+    /// Displays under a full-screen app: their overlay is hidden and not drawn.
+    private var covered = Set<UInt32>()
 
     /// Called when Metal setup fails so the UI can say why snow is unavailable.
     var onRendererFailure: ((String) -> Void)?
@@ -50,9 +52,15 @@ final class OverlayManager {
         applyState()
     }
 
+    func setCovered(_ ids: Set<UInt32>) {
+        guard ids != covered else { return }
+        covered = ids
+        applyState()
+    }
+
     func hideAll() {
         hidden = true
-        for o in overlays.values { o.view.isPaused = true; o.window.orderOut(nil) }
+        for o in overlays.values { o.view.isPaused = true; o.window.orderOut(nil); o.view.releaseDrawables = true }
     }
 
     /// Redraws once while paused so changes such as Clear Snow become visible immediately.
@@ -70,7 +78,8 @@ final class OverlayManager {
     /// Brings overlays back to front and resumes drawing. Cheap; safe to call often.
     func reassert() {
         guard !hidden else { return }
-        for o in overlays.values {
+        for (id, o) in overlays where !covered.contains(id) {
+            o.view.releaseDrawables = false
             o.window.orderFrontRegardless()
             if !paused { o.view.isPaused = false }
         }
@@ -114,7 +123,14 @@ final class OverlayManager {
 
     private func applyState() {
         hidden = false
-        for o in overlays.values {
+        for (id, o) in overlays {
+            if covered.contains(id) {
+                o.view.isPaused = true
+                o.window.orderOut(nil)
+                o.view.releaseDrawables = true     // frees the two full-screen buffers (~46 MB on Retina)
+                continue
+            }
+            o.view.releaseDrawables = false
             o.view.preferredFramesPerSecond = fps
             o.renderer.drawsDisplayBorder = showBorders
             o.window.orderFrontRegardless()

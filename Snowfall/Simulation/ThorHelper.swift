@@ -99,7 +99,7 @@ extension PhysicsWorld {
     private func thorLanding(_ site: ThorSite) -> SIMD2<Float> {
         guard let st = state(forSurface: site.surfaceID) else { return SIMD2(ThorMetrics.standX(forImpactX: site.x), Float(region.minY)) }
         let h = st.field.height(atLocalX: site.x - st.surface.minX)
-        return SIMD2(ThorMetrics.standX(forImpactX: site.x), st.surface.topY + h)
+        return SIMD2(ThorMetrics.standX(forImpactX: site.x), st.surface.topY(atX: site.x) + h)
     }
 
     func startThor() {
@@ -190,7 +190,7 @@ extension PhysicsWorld {
         let impactX = site.x
         let local = impactX - st.surface.minX
         let radius: Float = level == 1 ? 85 : 155
-        let surfaceY = st.surface.topY + st.field.height(atLocalX: local)
+        let surfaceY = st.surface.topY(atX: impactX) + st.field.height(atLocalX: local)
 
         // Break the ice layer.
         var removed: Float = 0
