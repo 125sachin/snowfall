@@ -12,6 +12,8 @@ enum SpiderMetrics {
     static let feetDrop: Float = 52
     static let gravity: Float = 900
     static let swingDY: Float = 360
+    /// Radius of the webbed patch that is torn off a pile (the whole area comes clear).
+    static let patchRadius: Float = 140
 
     static func rotate(_ v: SIMD2<Float>, by a: Float) -> SIMD2<Float> {
         SIMD2(v.x * cos(a) - v.y * sin(a), v.x * sin(a) + v.y * cos(a))
@@ -35,7 +37,7 @@ struct SpiderRun {
     var totalTime: Float = 0
     var leaveTime: Float = 0
     var rot: Float = 0
-    var ballTimer: Float = 0.9
+    var ballTimer: Float = 0.1
     var netTimer: Float = 1.8
     var balls: [SpiderWebBall] = []
     var patches: [SpiderPatch] = []
@@ -179,7 +181,7 @@ extension PhysicsWorld {
             let keep = max(0, feetY - st.surface.topY)
             let h = st.field.height(atLocalX: s.pos.x - st.surface.minX)
             guard h > keep else { continue }
-            let lo = min(oldX, s.pos.x) - 26 - st.surface.minX, hi = max(oldX, s.pos.x) + 26 - st.surface.minX
+            let lo = min(oldX, s.pos.x) - 40 - st.surface.minX, hi = max(oldX, s.pos.x) + 40 - st.surface.minX
             let removed = st.field.sweep(fromLocalX: lo, toLocalX: hi, keepDepth: keep)
             if removed > 0 { st.dirty = true; removedTotal += removed }
         }
@@ -203,22 +205,25 @@ extension PhysicsWorld {
     // MARK: Web balls and yanks
 
     /// The 120 pt-wide window of snow with the most volume between two x positions, over all surfaces.
-    func bestPile(from minX: Float, to maxX: Float) -> (x: Float, y: Float, surfaceID: String, volume: Float)? {
+    func bestPile(from minX: Float, to maxX: Float, excluding: [(Float, String)] = [], minGap: Float = 0) -> (x: Float, y: Float, surfaceID: String, volume: Float)? {
         var best: (x: Float, y: Float, surfaceID: String, volume: Float)?
+        var bestScore: Float = 0
         for st in ordered {
             let sf = st.surface, f = st.field
             let lo = max(minX, sf.minX), hi = min(maxX, sf.maxX)
             guard hi - lo > 40 else { continue }
             let first = f.binIndex(atLocalX: lo - sf.minX), last = f.binIndex(atLocalX: hi - sf.minX)
-            let win = max(2, Int(120 / f.binWidth))
+            let win = max(2, Int((minGap > 0 ? minGap * 0.8 : 120) / f.binWidth))
             var i = first
             let stride = max(1, win / 3)
             while i <= last {
                 var vol: Float = 0
                 for j in i..<min(last + 1, i + win) { vol += f.height(atBin: j) * f.binWidth }
-                if best == nil || vol > best!.volume {
-                    let cx = sf.minX + (Float(min(last, i + win / 2)) + 0.5) * f.binWidth
+                let cx = sf.minX + (Float(min(last, i + win / 2)) + 0.5) * f.binWidth
+                let score = vol + (cx - minX) * 1.5      // big piles first, but the nearest ones before far-off ones
+                if (best == nil || score > bestScore) && !excluding.contains(where: { $0.1 == sf.id && abs($0.0 - cx) < minGap }) {
                     best = (cx, sf.topY(atX: cx) + f.height(atLocalX: cx - sf.minX), sf.id, vol)
+                    bestScore = score
                 }
                 i += stride
             }
@@ -227,15 +232,18 @@ extension PhysicsWorld {
     }
 
     private func updateWebBalls(_ s: inout SpiderRun, dt: Float) {
-        // Fire at the biggest pile ahead every couple of seconds.
+        // Shoot webs at the biggest piles ahead, one after another (up to four in the air), each at a
+        // different pile, so the snow he passes is cleared rather than just a few spots.
         s.ballTimer -= dt
-        if s.phase == .swinging, s.ballTimer <= 0, s.balls.isEmpty, s.patches.count < 2 {
-            if let pile = bestPile(from: s.pos.x - 950, to: s.pos.x - 130), pile.volume > 200 {
-                s.balls.append(SpiderWebBall(from: s.handWorld, target: SIMD2(pile.x, pile.y + 4), t: 0, duration: 0.4,
-                                             surfaceID: pile.surfaceID, pos: s.handWorld))
-                s.ballTimer = rng.float(1.5...2.2)
+        if s.phase == .swinging, s.ballTimer <= 0, s.balls.count < 5, s.patches.count < 10 {
+            let taken = s.balls.map { ($0.target.x, $0.surfaceID) } + s.patches.map { ($0.x, $0.surfaceID) }
+            if let pile = bestPile(from: s.pos.x - 800, to: s.pos.x - 60, excluding: taken, minGap: 200), pile.volume > 60 {
+                let dist = abs(pile.x - s.pos.x)
+                s.balls.append(SpiderWebBall(from: s.handWorld, target: SIMD2(pile.x, pile.y + 4), t: 0,
+                                             duration: 0.28 + dist / 3200, surfaceID: pile.surfaceID, pos: s.handWorld))
+                s.ballTimer = rng.float(0.12...0.22)
             } else {
-                s.ballTimer = 0.5
+                s.ballTimer = 0.3
             }
         }
         var i = 0
@@ -245,16 +253,23 @@ extension PhysicsWorld {
             let b = s.balls[i]
             s.balls[i].pos = b.from + (b.target - b.from) * u + SIMD2(0, 45 * sin(.pi * u))
             if u >= 1 {
-                s.patches.append(SpiderPatch(x: b.target.x, y: b.target.y, radius: 70, age: 0, yanked: false, surfaceID: b.surfaceID))
+                s.patches.append(SpiderPatch(x: b.target.x, y: b.target.y, radius: SpiderMetrics.patchRadius, age: 0, yanked: false, surfaceID: b.surfaceID))
+                webImpact(at: b.target, surfaceID: b.surfaceID)
                 s.balls.remove(at: i)
             } else { i += 1 }
         }
     }
 
+    /// The web ball splats on the pile: the snow right under it is already torn loose.
+    private func webImpact(at target: SIMD2<Float>, surfaceID: String) {
+        guard let st = state(forSurface: surfaceID) else { return }
+        clearDisc(on: st, centerX: target.x, radius: SpiderMetrics.patchRadius * 0.45, fraction: 0.7)
+    }
+
     private func updatePatches(_ s: inout SpiderRun, dt: Float) {
         for i in s.patches.indices {
             s.patches[i].age += dt
-            if !s.patches[i].yanked, s.patches[i].age >= 0.45 {
+            if !s.patches[i].yanked, s.patches[i].age >= 0.3 {
                 s.patches[i].yanked = true
                 yankPatch(&s, s.patches[i])
             }
@@ -274,15 +289,15 @@ extension PhysicsWorld {
             let d = abs((Float(i) + 0.5) * bw - local)
             guard d < patch.radius else { continue }
             let u = d / patch.radius
-            let w: Float = u < 0.6 ? 1 : (1 - u) / 0.4
+            let w: Float = u < 0.8 ? 1 : (1 - u) / 0.2          // the whole webbed area comes away
             let h = st.field.height(atBin: i)
             if h > 0 { removed += st.field.melt(bin: i, depth: h * w) * bw }
         }
         if removed > 0 { st.dirty = true; totals.lostVolume += removed }
         let hand = s.handWorld
-        for _ in 0..<14 where pool.count < pool.capacity - 40 {
+        for _ in 0..<20 where pool.count < pool.capacity - 40 {
             var p = SnowParticle.blank
-            p.position = SIMD2(patch.x + rng.float(-patch.radius * 0.6...patch.radius * 0.6), patch.y + rng.float(0...12))
+            p.position = SIMD2(patch.x + rng.float(-patch.radius * 0.8...patch.radius * 0.8), patch.y + rng.float(0...12))
             p.velocity = (hand - p.position) / 0.5 + SIMD2(-120, 140)
             p.radius = rng.float(2.5...5.5); p.opacity = 0.95; p.mass = 1.3
             p.angularVelocity = rng.float(-5...5)
