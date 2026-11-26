@@ -16,6 +16,10 @@ enum ThorMetrics {
     static let raisedAngle: Float = -1.25    // wound up over his head
     static let raisedAfterBlow: Float = -1.05
     static let restAngle: Float = 0.55
+    /// Distance between hammer sites along a surface, and the most sites in one run.
+    static let siteSpacing: Float = 300
+    static let maxSites = 16
+    static let crackRadius: Float = 110, shatterRadius: Float = 190
 
     /// Sprite-centre x at which the hammer head lands on `impactX`.
     static func standX(forImpactX impactX: Float) -> Float {
@@ -71,29 +75,40 @@ struct ThorRun {
 extension PhysicsWorld {
     // MARK: Planning
 
-    /// Picks 2–3 spots on snowy surfaces, spaced apart, ordered right → left.
+    /// Plans a route that covers every snowy surface: sites are spaced `siteSpacing` apart along each
+    /// surface (blow 2 clears about twice its radius, so neighbouring blows overlap), skipping stretches
+    /// that are empty or hidden behind a window in front. Ordered right → left.
     func chooseThorSites() -> [ThorSite] {
-        var weighted = ordered.map { ($0, max($0.field.volume, 1)) }
-        if weighted.contains(where: { $0.1 > 100 }) { weighted = weighted.filter { $0.1 > 100 } }
-        guard !weighted.isEmpty else { return [] }
-        let count = 2 + Int(rng.next() % 2)
-        var sites: [ThorSite] = []
-        var tries = 0
-        while sites.count < count, tries < 40 {
-            tries += 1
-            let total = weighted.reduce(0) { $0 + $1.1 }
-            var pick = rng.float(0...total)
-            var chosen = weighted[0].0
-            for (st, w) in weighted { if pick <= w { chosen = st; break }; pick -= w }
-            let lo = chosen.surface.minX + 120, hi = chosen.surface.maxX - 120
-            let x = hi > lo ? rng.float(lo...hi) : (chosen.surface.minX + chosen.surface.maxX) / 2
-            if sites.contains(where: { abs($0.x - x) < 260 }) { continue }
-            sites.append(ThorSite(x: x, surfaceID: chosen.surface.id))
+        var sites: [(site: ThorSite, snow: Float)] = []
+        for st in ordered where st.field.volume > 40 {
+            let hidden = occludedSpans(for: st)
+            let lo = st.surface.minX + 30, hi = st.surface.maxX - 30
+            let n = hi > lo ? max(1, Int(((hi - lo) / ThorMetrics.siteSpacing).rounded(.up))) : 1
+            let step = hi > lo ? (hi - lo) / Float(n) : 0
+            for k in 0..<n {
+                let x = hi > lo ? lo + step * (Float(k) + 0.5) : (st.surface.minX + st.surface.maxX) / 2
+                if hidden.contains(where: { x >= $0.0 && x <= $0.1 }) { continue }
+                let near = snowNear(st, x: x, radius: ThorMetrics.siteSpacing / 2)
+                if near > 25 { sites.append((ThorSite(x: x, surfaceID: st.surface.id), near)) }
+            }
         }
-        if sites.isEmpty, let f = weighted.first {
-            sites.append(ThorSite(x: (f.0.surface.minX + f.0.surface.maxX) / 2, surfaceID: f.0.surface.id))
+        if sites.count > ThorMetrics.maxSites {
+            sites = Array(sites.sorted { $0.snow > $1.snow }.prefix(ThorMetrics.maxSites))   // the snowiest spots
         }
-        return sites.sorted { $0.x > $1.x }
+        if sites.isEmpty, let st = ordered.max(by: { $0.field.volume < $1.field.volume }), st.field.volume > 1 {
+            return [ThorSite(x: (st.surface.minX + st.surface.maxX) / 2, surfaceID: st.surface.id)]
+        }
+        return sites.map(\.site).sorted { $0.x > $1.x }
+    }
+
+    /// Snow volume (pt²) within `radius` of surface x.
+    func snowNear(_ st: SurfaceState, x: Float, radius: Float) -> Float {
+        let local = x - st.surface.minX
+        let lo = st.field.binIndex(atLocalX: local - radius), hi = st.field.binIndex(atLocalX: local + radius)
+        guard lo <= hi else { return 0 }
+        var v: Float = 0
+        for i in lo...hi { v += st.field.height(atBin: i) * st.field.binWidth }
+        return v
     }
 
     private func thorLanding(_ site: ThorSite) -> SIMD2<Float> {
@@ -144,11 +159,14 @@ extension PhysicsWorld {
             if r.blowsDone == 1, r.t >= 1.40 { thorBlow(&r, level: 2) }
             if r.t >= 2.08 {
                 r.siteIndex += 1
+                // Skip sites the neighbouring blows have already cleared.
+                while r.siteIndex < r.sites.count, let st = state(forSurface: r.sites[r.siteIndex].surfaceID),
+                      snowNear(st, x: r.sites[r.siteIndex].x, radius: 120) < 20 { r.siteIndex += 1 }
                 if r.siteIndex < r.sites.count {
                     r.phase = .flying; r.t = 0
                     r.from = SIMD2(r.x, r.y)
                     r.to = thorLanding(r.sites[r.siteIndex])
-                    r.flightDuration = 1.5
+                    r.flightDuration = min(max(0.7 + simd_length(r.to - r.from) / 800, 0.9), 2.2)
                 } else {
                     r.phase = .leaving; r.t = 0
                 }
@@ -189,7 +207,7 @@ extension PhysicsWorld {
         guard let st = state(forSurface: site.surfaceID) else { return }
         let impactX = site.x
         let local = impactX - st.surface.minX
-        let radius: Float = level == 1 ? 85 : 155
+        let radius: Float = level == 1 ? ThorMetrics.crackRadius : ThorMetrics.shatterRadius
         let surfaceY = st.surface.topY(atX: impactX) + st.field.height(atLocalX: local)
 
         // Break the ice layer.
@@ -201,7 +219,7 @@ extension PhysicsWorld {
             let d = abs((Float(i) + 0.5) * bw - local)
             guard d < radius else { continue }
             let u = d / radius
-            let w: Float = level == 1 ? 0.65 * (1 - u * u) : (u < 0.6 ? 1 : (1 - u) / 0.4)
+            let w: Float = level == 1 ? 0.65 * (1 - u * u) : (u < 0.82 ? 1 : (1 - u) / 0.18)   // blow 2 clears out past half the site spacing
             let h = st.field.height(atBin: i)
             if h > 0 { removed += st.field.melt(bin: i, depth: h * w) * bw }
         }
