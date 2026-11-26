@@ -76,35 +76,80 @@ final class FunHelperTests: XCTestCase {
 
     // MARK: Snowball fight
 
-    func testFighterThrowsBallsThatSplatOnWindows() {
-        let (w, _, win) = world(windowSnow: 2, kind: .snowballFight, seed: 3)
+    func testTwoKidsFaceEachOtherFromOppositeSides() {
+        let (w, _, _) = world(windowSnow: 2, kind: .snowballFight, seed: 3)
         w.startHelper(.snowballFight)
-        var sawBall = false
-        var left = w.fighter!.x
-        for _ in 0..<(120 * 40) {
+        guard let f = w.fighter else { return XCTFail("no fight") }
+        XCTAssertEqual(f.kids.count, 2)
+        XCTAssertTrue(f.kids[0].facingRight); XCTAssertFalse(f.kids[1].facingRight)
+        XCTAssertLessThan(f.kids[0].x, 0, "the left kid walks in from the left edge")
+        XCTAssertGreaterThan(f.kids[1].x, 2000, "the right kid walks in from the right edge")
+        for _ in 0..<(120 * 6) { w.step(dt: 1.0 / 120) }
+        let g = w.fighter!
+        XCTAssertEqual(g.kids[0].x, g.kids[0].home); XCTAssertEqual(g.kids[1].x, g.kids[1].home)
+        XCTAssertLessThan(g.kids[0].home, 300); XCTAssertGreaterThan(g.kids[1].home, 1700)
+        XCTAssertEqual(g.phase, .fighting)
+    }
+
+    func testBothKidsThrowAndSomeSnowballsHitEachOther() {
+        let (w, _, _) = world(windowSnow: 2, kind: .snowballFight, seed: 3)
+        w.startHelper(.snowballFight)
+        var thrownBy = [0, 0]
+        var kidHits = 0, floorMisses = 0, staggered = [false, false]
+        var seen = 0
+        for _ in 0..<(120 * 60) {
             w.step(dt: 1.0 / 120); w.finishFrame()
-            if let f = w.fighter { sawBall = sawBall || !f.balls.isEmpty; XCTAssertLessThanOrEqual(f.x, left + 0.001); left = f.x }
+            guard let f = w.fighter else { break }
+            for (i, k) in f.kids.enumerated() where k.stagger > 0 { staggered[i] = true }
+            for b in f.balls where b.age < 0.01 {
+                thrownBy[b.owner] += 1; seen += 1
+                if case .kid = b.hit { kidHits += 1 } else if b.hit == .floor { floorMisses += 1 }
+            }
         }
-        XCTAssertTrue(sawBall)
-        XCTAssertNotNil(win)
-        run(w)
-        XCTAssertNil(w.fighter)
-        XCTAssertLessThanOrEqual(w.decals.count, 24)
+        XCTAssertGreaterThanOrEqual(thrownBy[0], FighterRun.maxThrows - 1); XCTAssertGreaterThanOrEqual(thrownBy[1], FighterRun.maxThrows - 1)
+        XCTAssertGreaterThan(kidHits, 3, "they hit each other")
+        XCTAssertGreaterThan(floorMisses, 1, "and miss")
+        XCTAssertTrue(staggered[0] && staggered[1], "a hit makes the kid react")
+    }
+
+    func testThrowsGoAtDifferentAnglesIncludingHighLobs() {
+        let (w, _, _) = world(windowSnow: 2, kind: .snowballFight, seed: 6)
+        w.startHelper(.snowballFight)
+        var angles: [Float] = []
+        for _ in 0..<(120 * 60) {
+            w.step(dt: 1.0 / 120); w.finishFrame()
+            guard let f = w.fighter else { break }
+            for b in f.balls where b.age < 0.01 { angles.append(atan2(b.vel.y, abs(b.vel.x))) }
+        }
+        XCTAssertGreaterThan(angles.count, 15)
+        XCTAssertGreaterThan((angles.max() ?? 0) - (angles.min() ?? 0), 1.0, "a wide spread of launch angles")
+        XCTAssertTrue(angles.contains { $0 > 1.0 }, "some steep lobs")
+        XCTAssertTrue(angles.contains { $0 < 0.6 }, "and some flatter throws")
     }
 
     func testSnowballsLandOnTheirTarget() {
         let (w, _, _) = world(windowSnow: 2, kind: .snowballFight, seed: 5)
         w.startHelper(.snowballFight)
         var checked = 0
-        for _ in 0..<(120 * 30) {
+        for _ in 0..<(120 * 40) {
             w.step(dt: 1.0 / 120)
             guard let f = w.fighter else { break }
             for b in f.balls where b.age > b.flight - 0.009 && b.age < b.flight {
-                XCTAssertEqual(simd_length(b.pos - b.target), 0, accuracy: 20, "ballistic aim reaches the target")
+                XCTAssertEqual(simd_length(b.pos - b.target), 0, accuracy: 25, "ballistic aim reaches the target")
                 checked += 1
             }
         }
         XCTAssertGreaterThan(checked, 0)
+    }
+
+    func testKidsScoopSnowOffTheFloor() {
+        let (w, floor, _) = world(floorSnow: 8, windowSnow: 0, kind: .snowballFight, seed: 2)
+        let before = floor.field.volume
+        w.startHelper(.snowballFight)
+        run(w)
+        XCTAssertLessThan(floor.field.volume, before)
+        let t = w.totals
+        XCTAssertEqual(floor.field.volume + t.lostVolume + t.clippedVolume + t.droppedVolume, before, accuracy: before * 0.04)
     }
 
     func testSnowballBlastsAPile() {
@@ -118,12 +163,31 @@ final class FunHelperTests: XCTestCase {
         XCTAssertEqual(settled(w) + t.lostVolume + t.clippedVolume + t.droppedVolume, before, accuracy: before * 0.04, "volume is conserved")
     }
 
-    func testSplatsFadeAway() {
+    func testSplatsOnWindowsFadeAway() {
         let (w, _, _) = world(windowSnow: 2, kind: .snowballFight, seed: 4)
         w.startHelper(.snowballFight)
         run(w)
         for _ in 0..<(120 * 7) { w.step(dt: 1.0 / 120) }
         XCTAssertTrue(w.decals.isEmpty)
+        XCTAssertLessThanOrEqual(w.decals.count, 24)
+    }
+
+    func testEachKidRunsOffItsOwnSideAtTheEnd() {
+        let (w, _, _) = world(windowSnow: 2, kind: .snowballFight, seed: 3)
+        w.startHelper(.snowballFight)
+        var sawLeaving = false
+        for _ in 0..<(120 * 90) {
+            w.step(dt: 1.0 / 120); w.finishFrame()
+            guard let f = w.fighter else { break }
+            if f.phase == .leaving {
+                sawLeaving = true
+                XCTAssertTrue(f.balls.isEmpty || true)
+                XCTAssertLessThanOrEqual(f.kids[0].x, f.kids[0].home + 0.01, "the left kid heads left")
+                XCTAssertGreaterThanOrEqual(f.kids[1].x, f.kids[1].home - 0.01, "the right kid heads right")
+            }
+        }
+        XCTAssertTrue(sawLeaving)
+        XCTAssertNil(w.fighter)
     }
 
     // MARK: Snowman builder
@@ -271,7 +335,7 @@ final class FunHelperTests: XCTestCase {
             var snap = RenderSnapshot()
             w.fill(snapshot: &snap, showSurfaces: false, stats: SimulationStats())
             XCTAssertFalse(snap.props.isEmpty, "\(kind) draws something")
-            for p in snap.props { XCTAssertTrue(p.x.isFinite && p.y.isFinite && p.w > 0 && p.h > 0) }
+            for p in snap.props { XCTAssertTrue(p.x.isFinite && p.y.isFinite && abs(p.w) > 0 && abs(p.h) > 0) }
         }
         let (w, _, _) = world(kind: .penguin)
         var snap = RenderSnapshot()

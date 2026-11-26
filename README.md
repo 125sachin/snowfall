@@ -23,11 +23,11 @@ characters to clear it away again.
   | JCB snow plow | Drives right to left along the bottom, pushing the settled snow ahead of its blade. |
   | Santa's magic tornado | Waves a wand and sweeps a tornado across the screen that lifts snow off the floor and window tops. |
   | Iron Man's eye lasers | Flies in and melts settled snow into steam with twin lasers. |
-  | Thor's hammer | Lands at two or three spots and shatters the ice layer with two hammer blows each. |
-  | Spider-Man's web swing | Swings in on webs, scraping a furrow, yanking piles away and netting falling flakes. |
+  | Thor's hammer | Works across every snowy surface, shattering the ice layer with two hammer blows at each spot until it is all gone. |
+  | Spider-Man's web swing | Swings in on webs, shooting webs at piles that tear the whole area clear, and netting falling flakes. |
   | Sliding penguin | Belly-slides along the floor, ploughing a strip clear. |
-  | Snowball fight | A kid throws snowballs that blast piles and splat on windows. |
-  | Snowman builder | Rolls a snowball across the floor, then builds a snowman in the bottom-left corner. |
+  | Snowball fight | Two kids on opposite sides throw snowballs at each other and across the screen, blasting piles and splatting on windows. |
+  | Snowman builder | Rolls and stacks three snowballs and dresses a snowman (hat, scarf, carrot nose) in the bottom-left corner. |
   | Santa's sleigh flyby | A sleigh and reindeer sweep across; the downdraught blows snow off the surfaces below. |
 
   Helpers can run on demand or automatically every few minutes when there is snow to clear.

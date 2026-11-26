@@ -64,15 +64,23 @@ enum HelperKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .ironMan:
             "Iron Man flies in from the right and sweeps his eye lasers ahead of him as he heads left, melting settled snow into steam and vaporizing the flakes his beam crosses."
         case .thor:
-            "Thor flies in and lands at two or three spots, heading left. At each one he brings Mjolnir down twice: the first blow cracks the ice layer, the second shatters it, with lightning, a shockwave and flying shards."
+            "Thor flies in and works his way across every snowy surface from right to left, landing every few hundred " +
+            "points. At each spot he brings Mjolnir down twice: the first blow cracks the ice layer, the second shatters " +
+            "it, with lightning, a shockwave and flying shards, until all the stacked snow is gone."
         case .spiderMan:
-            "Spider-Man swings in on webs from the right, heading left. His feet scrape a furrow through the snow at the bottom of each swing, he webs the biggest piles and yanks them away, and he spins a net to catch snow still in the air."
+            "Spider-Man swings in on webs from the right, heading left. He shoots web after web at the piles of snow ahead; " +
+            "each one tears the whole webbed area clear. His feet scrape a furrow at the bottom of each swing, and he spins " +
+            "a net to catch snow still in the air."
         case .penguin:
             "A penguin belly-slides along the bottom of the screen from right to left, ploughing a strip of the floor clear and kicking up snow."
         case .snowballFight:
-            "A kid walks along the floor throwing snowballs in arcs. They blast piles of snow away and splat on windows, leaving marks that fade."
+            "Two kids, one on each side of the screen, have a snowball fight. They scoop snow off the floor and throw at " +
+            "each other (some hit, some miss) and lob the rest across the screen at different angles, blasting piles away " +
+            "and splatting on windows."
         case .snowman:
-            "A kid rolls a snowball along the floor, picking up all the snow in its path so it grows. Then they stack it into a snowman that stays for about a minute."
+            "A kid rolls a snowball across the floor, picking up the snow so it grows, then packs a middle ball and a head, " +
+            "lifts them onto the stack and dresses the snowman with eyes, a carrot nose, buttons, a scarf, a hat and twig " +
+            "arms. It stays in the bottom-left corner for about a minute."
         case .sleigh:
             "Santa's sleigh and reindeer sweep across the screen. The downdraught blows snow off the surfaces below, tosses the falling flakes around, and leaves a glitter trail."
         case .random:
