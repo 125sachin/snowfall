@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
 
 - Snow stays visible on light backgrounds: flakes and piles get a cool outline. A new "Snow on" setting
   (Settings → Snow) follows the system appearance by default and can be forced to light or dark backgrounds.
