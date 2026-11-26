@@ -4,6 +4,10 @@
 
 - Snow stays visible on light backgrounds: flakes and piles get a cool outline. A new "Snow on" setting
   (Settings → Snow) follows the system appearance by default and can be forced to light or dark backgrounds.
+- Spider-Man shoots a volley of webs at the piles ahead and each one clears the whole webbed area.
+- Thor works across every snowy surface until all the stacked snow is gone.
+- The snowman is built in stages (base, middle, head, then eyes, nose, smile, buttons, scarf, hat and arms).
+- The snowball fight has two kids on opposite sides throwing at each other and across the screen at varied angles.
 
 ## 0.3.0
 

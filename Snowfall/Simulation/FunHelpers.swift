@@ -7,7 +7,8 @@ import simd
 // counted in `totals.lostVolume`; debris is purely visual (`orbitRadius = -1`, fades out).
 
 enum PropKind: Int, Sendable, CaseIterable {
-    case penguin, kid, kidArm, snowball, splat, snowman, sleigh
+    case penguin, kid, kidArm, snowball, splat, sleigh
+    case hat, scarf, carrot, coal, stick           // snowman parts
 }
 
 /// One sprite to draw, centred on (x, y), `w × h` pt, rotated by `rot` (radians, CCW).
@@ -31,9 +32,6 @@ enum FunMetrics {
     static let sleighScale: Float = 0.55
     static let sleighSize = SIMD2<Float>(560, 150) * sleighScale
     static let sleighSpeed: Float = 520
-    /// Snowman sprite box for a base ball of diameter 100 (design units).
-    static let snowmanBox = SIMD2<Float>(160, 250)
-    static let snowmanMidY: Float = 127, snowmanHeadY: Float = 179
     static let snowmanLife: Float = 55
 }
 
@@ -126,7 +124,7 @@ extension PhysicsWorld {
             let a = min(1, (SplatDecal.life - d.age) / 1.5) * 0.92
             out.append(RenderProp(kind: .splat, x: d.x, y: d.y, w: d.size, h: d.size, rot: 0, alpha: a))
         }
-        for m in snowmen { out.append(snowmanProp(m)) }
+        for m in snowmen { snowmanProps(x: m.x, baseY: m.baseY, radius: m.radius, partTime: nil, fade: min(1, (FunMetrics.snowmanLife - m.age) / 6), out: &out) }
         if let p = penguin { out.append(penguinProp(p)) }
         if let b = builder { builderProps(b, &out) }
         if let f = fighter { fighterProps(f, &out) }
@@ -136,11 +134,26 @@ extension PhysicsWorld {
         }
     }
 
-    fileprivate func snowmanProp(_ m: SnowmanDecor) -> RenderProp {
-        let s = 2 * m.radius / 100
-        let fade = min(1, (FunMetrics.snowmanLife - m.age) / 6)
-        let w = FunMetrics.snowmanBox.x * s, h = FunMetrics.snowmanBox.y * s * (0.82 + 0.18 * fade)   // sags as it melts
-        return RenderProp(kind: .snowman, x: m.x, y: m.baseY + h / 2, w: w, h: h, rot: 0, alpha: fade)
+    /// A kid standing on the floor: body plus a separate arm that can point anywhere (0 = right, π = left).
+    /// `crouch` (0...1) squats; `facingRight` mirrors the sprite (the art faces left).
+    func kidProps(x: Float, ground: Float, bob: Float = 0, crouch: Float = 0, armAngle: Float,
+                  facingRight: Bool = false, out: inout [RenderProp]) {
+        let size = FunMetrics.kidSize
+        let h = size.y * (1 - 0.14 * crouch)
+        out.append(RenderProp(kind: .kid, x: x, y: ground + h / 2 + bob, w: facingRight ? -size.x : size.x, h: h))
+        let sh = kidShoulder(x: x, ground: ground, bob: bob, crouch: crouch, facingRight: facingRight)
+        let c = sh + SIMD2(cos(armAngle), sin(armAngle)) * (FunMetrics.armSize.x / 2)
+        out.append(RenderProp(kind: .kidArm, x: c.x, y: c.y, w: FunMetrics.armSize.x, h: FunMetrics.armSize.y, rot: armAngle))
+    }
+
+    func kidShoulder(x: Float, ground: Float, bob: Float = 0, crouch: Float = 0, facingRight: Bool = false) -> SIMD2<Float> {
+        let h = FunMetrics.kidSize.y * (1 - 0.14 * crouch)
+        return SIMD2(x + FunMetrics.kidShoulder.x * (facingRight ? -1 : 1), ground + bob + h / 2 + FunMetrics.kidShoulder.y * h / FunMetrics.kidSize.y)
+    }
+
+    func kidHandWorld(x: Float, ground: Float, bob: Float = 0, crouch: Float = 0, armAngle: Float, facingRight: Bool = false) -> SIMD2<Float> {
+        kidShoulder(x: x, ground: ground, bob: bob, crouch: crouch, facingRight: facingRight)
+            + SIMD2(cos(armAngle), sin(armAngle)) * (FunMetrics.armSize.x - 4)
     }
 }
 
@@ -158,7 +171,7 @@ extension PhysicsWorld {
         penguin = PenguinRun(x: Float(region.maxX) + 80)
     }
 
-    fileprivate func penguinProp(_ p: PenguinRun) -> RenderProp {
+    func penguinProp(_ p: PenguinRun) -> RenderProp {
         let ground = funGround(at: p.x)
         let size = FunMetrics.penguinSize
         return RenderProp(kind: .penguin, x: p.x, y: ground + size.y / 2 + 1 + abs(sin(p.t * 7)) * 1.5, w: size.x, h: size.y,
@@ -192,269 +205,6 @@ extension PhysicsWorld {
             return
         }
         penguin = p
-    }
-}
-
-// MARK: - Snowball fight
-
-struct FlyingSnowball {
-    enum Hit { case pile, face, floor }
-    var pos: SIMD2<Float>
-    var vel: SIMD2<Float>
-    var age: Float = 0
-    var flight: Float
-    var hit: Hit
-    var target: SIMD2<Float>
-    var surfaceID: String?
-}
-
-struct FighterRun {
-    var x: Float
-    var t: Float = 0
-    var throwTimer: Float = 0.9
-    var armTime: Float = -1              // seconds into the throw animation; -1 = not throwing
-    var released = false
-    var balls: [FlyingSnowball] = []
-    var throwsDone = 0
-    static let maxThrows = 14
-    static let walkSpeed: Float = 120
-
-    var armAngle: Float {
-        guard armTime >= 0 else { return -1.5 }
-        func lerp(_ a: Float, _ b: Float, _ u: Float) -> Float { a + (b - a) * min(max(u, 0), 1) }
-        if armTime < 0.3 { let u = armTime / 0.3; return lerp(-1.5, 1.0, u * u * (3 - 2 * u)) }
-        if armTime < 0.42 { return lerp(1.0, 2.6, (armTime - 0.3) / 0.12) }
-        return lerp(2.6, -1.5, (armTime - 0.42) / 0.25)
-    }
-}
-
-extension PhysicsWorld {
-    func startFighter() {
-        guard !isHelperRunning, !region.isEmpty else { return }
-        fighter = FighterRun(x: Float(region.maxX) + 50)
-    }
-
-    func kidHand(x: Float, ground: Float, angle: Float) -> SIMD2<Float> {
-        let sh = SIMD2(x + FunMetrics.kidShoulder.x, ground + FunMetrics.kidSize.y / 2 + FunMetrics.kidShoulder.y)
-        return sh + SIMD2(cos(angle), sin(angle)) * (FunMetrics.armSize.x - 4)
-    }
-
-    fileprivate func fighterProps(_ f: FighterRun, _ out: inout [RenderProp]) {
-        let ground = funGround(at: f.x)
-        let bob = abs(sin(f.t * 8)) * 2
-        out.append(RenderProp(kind: .kid, x: f.x, y: ground + FunMetrics.kidSize.y / 2 + bob, w: FunMetrics.kidSize.x, h: FunMetrics.kidSize.y))
-        let a = f.armAngle
-        let sh = SIMD2(f.x + FunMetrics.kidShoulder.x, ground + bob + FunMetrics.kidSize.y / 2 + FunMetrics.kidShoulder.y)
-        let c = sh + SIMD2(cos(a), sin(a)) * (FunMetrics.armSize.x / 2)
-        out.append(RenderProp(kind: .kidArm, x: c.x, y: c.y, w: FunMetrics.armSize.x, h: FunMetrics.armSize.y, rot: a))
-        if f.armTime >= 0, f.armTime < 0.36 {            // snowball in the raised hand
-            let h = sh + SIMD2(cos(a), sin(a)) * (FunMetrics.armSize.x + 2)
-            out.append(RenderProp(kind: .snowball, x: h.x, y: h.y, w: 14, h: 14))
-        }
-        for b in f.balls { out.append(RenderProp(kind: .snowball, x: b.pos.x, y: b.pos.y, w: 16, h: 16, rot: b.age * 9)) }
-    }
-
-    /// Chooses what to hit: the biggest pile ahead, a window face (leaves a splat), or the floor.
-    private func pickTarget(from hand: SIMD2<Float>, kidX: Float, ground: Float) -> (FlyingSnowball.Hit, SIMD2<Float>, String?) {
-        let near = kidX - 150, far = kidX - 950
-        if rng.float(0...1) < 0.55, let p = bestPile(from: far, to: near), p.volume > 150 {
-            return (.pile, SIMD2(p.x, p.y), p.surfaceID)
-        }
-        let wins = ordered.filter { $0.surface.kind == .windowTop && $0.surface.maxX > far && $0.surface.minX < near }
-        if !wins.isEmpty {
-            let w = wins[Int(rng.next() % UInt64(wins.count))].surface
-            let lo = max(w.minX, far), hi = min(w.maxX, near)
-            let px = lo < hi ? rng.float(lo...hi) : lo
-            let top = w.topY(atX: px)
-            let low = Float(w.frame.minY) + 25
-            let py = low < top - 12 ? rng.float(low...(top - 12)) : top - 12
-            return (.face, SIMD2(px, py), w.id)
-        }
-        return (.floor, SIMD2(kidX - rng.float(200...600), ground), nil)
-    }
-
-    func stepFighter(dt: Float) {
-        guard var f = fighter else { return }
-        f.t += dt
-        f.x -= FighterRun.walkSpeed * dt
-        let ground = funGround(at: f.x)
-
-        // Throw cycle.
-        if f.armTime < 0 {
-            f.throwTimer -= dt
-            if f.throwTimer <= 0, f.throwsDone < FighterRun.maxThrows, f.x > Float(region.minX) + 120, f.x < Float(region.maxX) - 40 {
-                f.armTime = 0; f.released = false
-            }
-        } else {
-            f.armTime += dt
-            if !f.released, f.armTime >= 0.36 {
-                f.released = true
-                f.throwsDone += 1
-                let hand = kidHand(x: f.x, ground: ground, angle: f.armAngle)
-                let (hit, target, sid) = pickTarget(from: hand, kidX: f.x, ground: ground)
-                let d = target - hand
-                let T = min(max(0.45 + abs(d.x) / 1500, 0.5), 1.0)
-                let vel = SIMD2(d.x / T, (d.y + 0.5 * FunMetrics.gravity * T * T) / T)
-                f.balls.append(FlyingSnowball(pos: hand, vel: vel, age: 0, flight: T, hit: hit, target: target, surfaceID: sid))
-            }
-            if f.armTime >= 0.7 { f.armTime = -1; f.throwTimer = rng.float(0.8...1.4) }
-        }
-
-        // Flying snowballs: ballistic arcs that splat on arrival.
-        var i = 0
-        while i < f.balls.count {
-            f.balls[i].age += dt
-            f.balls[i].pos += f.balls[i].vel * dt
-            f.balls[i].vel.y -= FunMetrics.gravity * dt
-            if f.balls[i].age >= f.balls[i].flight {
-                splat(f.balls[i])
-                f.balls.remove(at: i)
-            } else { i += 1 }
-        }
-
-        if f.x < Float(region.minX) - 90 {
-            fighter = nil
-            lastHelperEnd = time
-            return
-        }
-        fighter = f
-    }
-
-    private func splat(_ b: FlyingSnowball) {
-        switch b.hit {
-        case .pile:
-            if let id = b.surfaceID, let st = state(forSurface: id) { clearDisc(on: st, centerX: b.target.x, radius: 55, fraction: 0.85) }
-            funSpray(at: b.target, count: 10, speed: 120...320)
-        case .face:
-            if decals.count < 24 {
-                decals.append(SplatDecal(x: b.target.x, y: b.target.y, size: rng.float(56...88)))
-            }
-            funSpray(at: b.target, count: 5, speed: 60...200)
-        case .floor:
-            if let st = floorState(at: b.target.x) { clearDisc(on: st, centerX: b.target.x, radius: 40, fraction: 0.5) }
-            funSpray(at: b.target, count: 6, speed: 90...260)
-        }
-    }
-}
-
-// MARK: - Snowman builder
-
-struct BuilderRun {
-    enum Phase { case rolling, building, waving, leaving }
-    var phase: Phase = .rolling
-    var t: Float = 0
-    var phaseTime: Float = 0
-    var kidX: Float
-    var ballX: Float
-    var ballR: Float = 14
-    var collected: Float = 0
-    var rollAngle: Float = 0
-    var stopX: Float
-    var snowmanX: Float = 0
-    var snowmanR: Float = 0
-    static let rollSpeed: Float = 85
-    /// Time into `.building` at which the middle ball, the head and the finished figure appear.
-    static let midAt: Float = 0.6, headAt: Float = 1.6, doneAt: Float = 2.6, buildEnd: Float = 3.4
-
-    var armAngle: Float {
-        switch phase {
-        case .rolling: return -2.4 + 0.1 * sin(t * 6)            // pushing the ball ahead (to the left)
-        case .building: return -1.4
-        case .waving: return 1.2 + 0.5 * sin(phaseTime * 9)
-        case .leaving: return -1.5
-        }
-    }
-}
-
-extension PhysicsWorld {
-    func startBuilder() {
-        guard !isHelperRunning, !region.isEmpty else { return }
-        let bx = Float(region.maxX) + 40
-        // The snowman is built in the bottom-left corner: the ball is rolled all the way across.
-        let stop = Float(region.minX)
-        builder = BuilderRun(kidX: bx + 14 + 34, ballX: bx, stopX: stop)
-    }
-
-    fileprivate func builderProps(_ b: BuilderRun, _ out: inout [RenderProp]) {
-        let ground = funGround(at: b.kidX)
-        let kid = FunMetrics.kidSize
-        let bob = b.phase == .building || b.phase == .waving ? 0 : abs(sin(b.t * 8)) * 2
-        func ball(_ x: Float, _ y: Float, _ d: Float, rot: Float = 0, alpha: Float = 1) {
-            out.append(RenderProp(kind: .snowball, x: x, y: y, w: d, h: d, rot: rot, alpha: alpha))
-        }
-        switch b.phase {
-        case .rolling:
-            ball(b.ballX, ground + b.ballR, b.ballR * 2, rot: b.rollAngle)
-        case .building, .waving, .leaving:
-            if b.phase == .building {
-                let s = 2 * b.snowmanR / 100
-                let base = funGround(at: b.snowmanX)
-                let pop: (Float) -> Float = { u in min(max(u, 0), 1) }
-                let finished = pop((b.phaseTime - BuilderRun.doneAt) / 0.7)
-                if finished < 1 {
-                    ball(b.snowmanX, base + b.snowmanR, b.snowmanR * 2)
-                    let mu = pop((b.phaseTime - BuilderRun.midAt) / 0.4)
-                    if mu > 0 { ball(b.snowmanX, base + FunMetrics.snowmanMidY * s, 70 * s * mu) }
-                    let hu = pop((b.phaseTime - BuilderRun.headAt) / 0.4)
-                    if hu > 0 { ball(b.snowmanX, base + FunMetrics.snowmanHeadY * s, 50 * s * hu) }
-                }
-                if finished > 0 {
-                    let w = FunMetrics.snowmanBox.x * s, h = FunMetrics.snowmanBox.y * s
-                    out.append(RenderProp(kind: .snowman, x: b.snowmanX, y: base + h / 2, w: w, h: h, rot: 0, alpha: finished))
-                }
-            }
-        }
-        out.append(RenderProp(kind: .kid, x: b.kidX, y: ground + kid.y / 2 + bob, w: kid.x, h: kid.y))
-        let a = b.armAngle
-        let sh = SIMD2(b.kidX + FunMetrics.kidShoulder.x, ground + bob + kid.y / 2 + FunMetrics.kidShoulder.y)
-        let c = sh + SIMD2(cos(a), sin(a)) * (FunMetrics.armSize.x / 2)
-        out.append(RenderProp(kind: .kidArm, x: c.x, y: c.y, w: FunMetrics.armSize.x, h: FunMetrics.armSize.y, rot: a))
-    }
-
-    func stepBuilder(dt: Float) {
-        guard var b = builder else { return }
-        b.t += dt
-        b.phaseTime += dt
-        switch b.phase {
-        case .rolling:
-            let old = b.ballX
-            b.ballX -= BuilderRun.rollSpeed * dt
-            b.rollAngle += BuilderRun.rollSpeed * dt / b.ballR            // rolls to the left (CCW)
-            b.kidX = b.ballX + b.ballR + 34
-            // The ball picks up everything under it, so it grows as it goes.
-            if let st = floorState(at: b.ballX) {
-                let removed = st.field.sweep(fromLocalX: b.ballX - b.ballR - st.surface.minX, toLocalX: old + b.ballR - st.surface.minX, keepDepth: 0.4)
-                if removed > 0 {
-                    st.dirty = true
-                    totals.lostVolume += removed
-                    b.collected += removed
-                    b.ballR = min(58, (14 * 14 + b.collected * 0.9 / Float.pi).squareRoot())
-                }
-            }
-            // Stop once the finished snowman (arms included, ~1.6 radii each side) would touch the left edge.
-            if b.ballX <= max(b.stopX + max(b.ballR, 28) * 1.6 + 6, b.stopX) {
-                b.phase = .building; b.phaseTime = 0
-                b.snowmanX = b.ballX
-                b.snowmanR = max(b.ballR, 28)
-            }
-        case .building:
-            b.kidX += (b.snowmanX + b.snowmanR + 70 - b.kidX) * min(1, 3 * dt)   // steps back to admire
-            if b.phaseTime >= BuilderRun.buildEnd {
-                if snowmen.count >= 3 { snowmen.removeFirst() }
-                snowmen.append(SnowmanDecor(x: b.snowmanX, baseY: funGround(at: b.snowmanX), radius: b.snowmanR))
-                b.phase = .waving; b.phaseTime = 0
-            }
-        case .waving:
-            if b.phaseTime >= 1.3 { b.phase = .leaving; b.phaseTime = 0 }
-        case .leaving:
-            b.kidX -= 120 * dt
-            if b.kidX < Float(region.minX) - 90 {
-                builder = nil
-                lastHelperEnd = time
-                return
-            }
-        }
-        builder = b
     }
 }
 

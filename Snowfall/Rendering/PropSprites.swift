@@ -14,7 +14,11 @@ enum PropSprites {
             (.kidArm, CGSize(width: 40, height: 14), drawArm),
             (.snowball, CGSize(width: 32, height: 32), drawSnowball),
             (.splat, CGSize(width: 96, height: 96), drawSplat),
-            (.snowman, CGSize(width: 160, height: 250), drawSnowman),
+            (.hat, CGSize(width: 52, height: 38), drawHat),
+            (.scarf, CGSize(width: 64, height: 44), drawScarf),
+            (.carrot, CGSize(width: 30, height: 9), drawCarrot),
+            (.coal, CGSize(width: 8, height: 8), drawCoal),
+            (.stick, CGSize(width: 51, height: 8), drawStick),
             (.sleigh, CGSize(width: 560, height: 150), drawSleigh),
         ]
         for (kind, size, draw) in specs {
@@ -138,36 +142,51 @@ enum PropSprites {
         c.addPath(path); c.setFillColor(rgb(255, 255, 255, 0.97)); c.fillPath(); c.restoreGState()
     }
 
-    // MARK: Snowman (design box 160 × 250, base ball diameter 100)
+    // MARK: Snowman parts
 
-    private static func drawSnowman(_ c: CGContext, _ size: CGSize) {
-        let base = CGPoint(x: 80, y: 50), mid = CGPoint(x: 80, y: 127), head = CGPoint(x: 80, y: 179)
-        c.setLineCap(.round); c.setLineJoin(.round)
-        // Twig arms behind the body.
-        c.setStrokeColor(rgb(110, 76, 44)); c.setLineWidth(3.4)
-        c.move(to: CGPoint(x: 52, y: 132)); c.addLine(to: CGPoint(x: 12, y: 164)); c.move(to: CGPoint(x: 24, y: 152)); c.addLine(to: CGPoint(x: 18, y: 172))
-        c.move(to: CGPoint(x: 108, y: 132)); c.addLine(to: CGPoint(x: 148, y: 156)); c.move(to: CGPoint(x: 136, y: 150)); c.addLine(to: CGPoint(x: 144, y: 170))
-        c.strokePath()
-        ball(c, center: base, r: 50); ball(c, center: mid, r: 35); ball(c, center: head, r: 25)
-        // Buttons and face.
-        c.setFillColor(rgb(36, 36, 44))
-        for y in [112.0, 128.0, 144.0] { c.fillEllipse(in: CGRect(x: 77, y: y, width: 6, height: 6)) }
-        c.fillEllipse(in: CGRect(x: 68, y: 183, width: 5.5, height: 5.5)); c.fillEllipse(in: CGRect(x: 86, y: 183, width: 5.5, height: 5.5))
-        for (i, x) in [66.0, 71.0, 77.0, 83.0, 89.0, 94.0].enumerated() {
-            c.fillEllipse(in: CGRect(x: x, y: 168 - (i == 0 || i == 5 ? -2 : 0), width: 2.6, height: 2.6))
-        }
-        let nose = CGMutablePath()
-        nose.move(to: CGPoint(x: 76, y: 179)); nose.addLine(to: CGPoint(x: 50, y: 175)); nose.addLine(to: CGPoint(x: 76, y: 174)); nose.closeSubpath()
-        c.addPath(nose); c.setFillColor(rgb(244, 124, 30)); c.fillPath()
-        // Scarf with a hanging tail.
-        c.setFillColor(rgb(210, 46, 56))
-        c.addPath(CGPath(roundedRect: CGRect(x: 53, y: 150, width: 54, height: 11), cornerWidth: 5, cornerHeight: 5, transform: nil)); c.fillPath()
-        c.fill(CGRect(x: 96, y: 126, width: 10, height: 28))
-        c.setFillColor(rgb(250, 232, 232)); c.fill(CGRect(x: 96, y: 134, width: 10, height: 3)); c.fill(CGRect(x: 96, y: 142, width: 10, height: 3))
-        // Top hat.
+    private static func drawHat(_ c: CGContext, _ size: CGSize) {
         c.setFillColor(rgb(30, 30, 38))
-        c.fill(CGRect(x: 56, y: 199, width: 48, height: 5)); c.fill(CGRect(x: 63, y: 203, width: 34, height: 30))
-        c.setFillColor(rgb(210, 46, 56)); c.fill(CGRect(x: 63, y: 205, width: 34, height: 7))
+        c.addPath(CGPath(roundedRect: CGRect(x: 0, y: 0, width: 52, height: 6), cornerWidth: 3, cornerHeight: 3, transform: nil)); c.fillPath()
+        c.addPath(CGPath(roundedRect: CGRect(x: 9, y: 4, width: 34, height: 34), cornerWidth: 3, cornerHeight: 3, transform: nil)); c.fillPath()
+        c.setFillColor(rgb(210, 46, 56)); c.fill(CGRect(x: 9, y: 7, width: 34, height: 7))
+        c.setFillColor(rgb(255, 255, 255, 0.18)); c.fill(CGRect(x: 13, y: 16, width: 5, height: 20))      // highlight
+    }
+
+    /// A band for the neck (top) with a tail hanging down on the right.
+    private static func drawScarf(_ c: CGContext, _ size: CGSize) {
+        let red = rgb(210, 46, 56), light = rgb(250, 232, 232)
+        c.setFillColor(red)
+        c.addPath(CGPath(roundedRect: CGRect(x: 0, y: 32, width: 64, height: 12), cornerWidth: 6, cornerHeight: 6, transform: nil)); c.fillPath()
+        c.fill(CGRect(x: 42, y: 4, width: 13, height: 34))
+        c.setFillColor(light)
+        c.fill(CGRect(x: 42, y: 12, width: 13, height: 3.5)); c.fill(CGRect(x: 42, y: 21, width: 13, height: 3.5))
+        for x in stride(from: 6.0, to: 56.0, by: 14.0) { c.fill(CGRect(x: x, y: 33, width: 3.5, height: 10)) }
+        c.setStrokeColor(rgb(150, 24, 34)); c.setLineWidth(0.8)
+        c.stroke(CGRect(x: 42, y: 4, width: 13, height: 34))
+    }
+
+    /// Carrot nose: wide at the right (the face), tip at the left.
+    private static func drawCarrot(_ c: CGContext, _ size: CGSize) {
+        let p = CGMutablePath()
+        p.move(to: CGPoint(x: 30, y: 8)); p.addLine(to: CGPoint(x: 1, y: 4.5)); p.addLine(to: CGPoint(x: 30, y: 1)); p.closeSubpath()
+        c.addPath(p); c.setFillColor(rgb(244, 124, 30)); c.fillPath()
+        c.setStrokeColor(rgb(200, 90, 20)); c.setLineWidth(0.8)
+        for x in [10.0, 17.0, 24.0] { c.move(to: CGPoint(x: x, y: 2.8)); c.addLine(to: CGPoint(x: x, y: 6.2)) }
+        c.strokePath()
+    }
+
+    private static func drawCoal(_ c: CGContext, _ size: CGSize) {
+        ellipse(c, CGRect(x: 0.5, y: 0.5, width: 7, height: 7), fill: rgb(34, 34, 42))
+        ellipse(c, CGRect(x: 2, y: 4, width: 2, height: 2), fill: rgb(255, 255, 255, 0.35))
+    }
+
+    /// Twig: the root is at the left end, with a fork near the tip.
+    private static func drawStick(_ c: CGContext, _ size: CGSize) {
+        c.setLineCap(.round); c.setStrokeColor(rgb(110, 76, 44)); c.setLineWidth(3.2)
+        c.move(to: CGPoint(x: 2, y: 4)); c.addLine(to: CGPoint(x: 48, y: 4))
+        c.move(to: CGPoint(x: 32, y: 4)); c.addLine(to: CGPoint(x: 44, y: 7.2))
+        c.move(to: CGPoint(x: 38, y: 4)); c.addLine(to: CGPoint(x: 47, y: 0.8))
+        c.strokePath()
     }
 
     // MARK: Sleigh (560 × 150): reindeer on the left, Santa in the sleigh on the right

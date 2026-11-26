@@ -77,29 +77,30 @@ final class SpiderTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(lowestFeet, -1, "but never through the ground")
     }
 
-    func testFeetScrapeAFurrowThroughTheSnow() {
+    func testSnowIsClearedAsHeGoes() {
         let (w, floor, _) = world(snow: 30)
         let before = floor.field.volume
         w.startHelper(.spiderMan)
         run(w)
-        XCTAssertLessThan(floor.field.volume, before * 0.9, "he removes snow")
-        XCTAssertGreaterThan(floor.field.volume, before * 0.2, "but he does not wipe out the whole floor by scraping alone")
+        XCTAssertLessThan(floor.field.volume, before * 0.5, "his feet and webs clear the snow as he goes")
     }
 
     func testWebBallLandsOnAPileThenYankTearsItOff() {
         let (w, floor, _) = world(snow: 5)
         // One tall pile for him to target.
         floor.field.deposit(localX: 1500, volume: 6000, spreadBins: 70)
+        let tall = floor.field.height(atLocalX: 1500)
+        XCTAssertGreaterThan(tall, 40)
         w.startHelper(.spiderMan)
-        var patch: SpiderPatch?
-        var removedBefore: Float = 0
+        var landedNearPile = false
         for _ in 0..<(120 * 9) {
             w.step(dt: 1.0 / 120)
-            if let p = w.spider?.patches.first, patch == nil { patch = p; removedBefore = floor.field.height(atLocalX: p.x) }
+            if let p = w.spider?.patches.first(where: { abs($0.x - 1500) < SpiderMetrics.patchRadius }) { landedNearPile = true; _ = p }
         }
-        guard let p = patch else { return XCTFail("no web ball landed") }
-        XCTAssertGreaterThan(removedBefore, 10, "it targeted the pile")
-        XCTAssertLessThan(floor.field.height(atLocalX: p.x), 1.5, "the clump is gone after the yank")
+        XCTAssertTrue(landedNearPile, "a web patch lands on the pile")
+        XCTAssertLessThan(floor.field.height(atLocalX: 1500), 1.5, "the whole webbed area is gone after the yank")
+        XCTAssertLessThan(floor.field.height(atLocalX: 1500 + SpiderMetrics.patchRadius * 0.7), 1.5)
+        XCTAssertLessThan(floor.field.height(atLocalX: 1500 - SpiderMetrics.patchRadius * 0.7), 1.5)
     }
 
     func testBallsPickTheBiggestPileAhead() {
@@ -212,5 +213,25 @@ final class SpiderTests: XCTestCase {
         w.startHelper(.spiderMan)
         run(w)
         XCTAssertLessThan(win!.field.volume, before)
+    }
+}
+
+final class SpiderCoverageTests: XCTestCase {
+    func testWebsClearAlmostAllStackedSnow() {
+        var c = SimulationConfiguration(); c.density = 0; c.plowAuto = false; c.helper = .spiderMan; c.windStrength = 0; c.turbulence = 0; c.seed = 7
+        let w = PhysicsWorld(config: c)
+        w.setRegion(CGRect(x: 0, y: 0, width: 2400, height: 900))
+        w.setSurfaces([CollisionSurface(id: "floor", frame: CGRect(x: 0, y: 0, width: 2400, height: 0), velocity: .zero, kind: .displayBottom),
+                       CollisionSurface(id: "win", frame: CGRect(x: 600, y: 200, width: 700, height: 300), velocity: .zero, kind: .windowTop, zRank: 0)])
+        for id in ["floor", "win"] {
+            let st = w.state(forSurface: id)!
+            for i in 0..<st.field.binCount { st.field.add(volume: 20 * st.field.binWidth, toBin: i) }
+        }
+        let before = w.ordered.reduce(0) { $0 + $1.field.volume }
+        w.startHelper(.spiderMan)
+        var t: Float = 0
+        while w.isHelperRunning && t < 120 { w.step(dt: 1.0 / 120); w.finishFrame(); t += 1.0 / 120 }
+        let left = w.ordered.reduce(0) { $0 + $1.field.volume }
+        XCTAssertLessThan(left, before * 0.1, "the stacked snow is cleared, not just a few spots")
     }
 }

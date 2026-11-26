@@ -29,18 +29,21 @@ final class ThorTests: XCTestCase {
         return t
     }
 
-    func testPicksTwoOrThreeSitesOrderedRightToLeft() {
-        var counts = Set<Int>()
-        for seed in 1...12 {
-            let (w, _, _) = world(seed: UInt64(seed))
-            w.startHelper(.thor)
-            guard let r = w.thor else { return XCTFail("no run") }
-            counts.insert(r.sites.count)
-            XCTAssertTrue((2...3).contains(r.sites.count))
-            for (a, b) in zip(r.sites, r.sites.dropFirst()) { XCTAssertGreaterThan(a.x, b.x, "right to left") }
-            for (a, b) in zip(r.sites, r.sites.dropFirst()) { XCTAssertGreaterThan(abs(a.x - b.x), 250, "spaced apart") }
-        }
-        XCTAssertEqual(counts, [2, 3], "both two and three sites occur")
+    func testPlansASiteEveryFewHundredPointsOrderedRightToLeft() {
+        let (w, _, _) = world(snow: 20)
+        w.startHelper(.thor)
+        guard let r = w.thor else { return XCTFail("no run") }
+        XCTAssertGreaterThan(r.sites.count, 4, "the whole stack is covered, not two or three spots")
+        XCTAssertLessThanOrEqual(r.sites.count, ThorMetrics.maxSites)
+        for (a, b) in zip(r.sites, r.sites.dropFirst()) { XCTAssertGreaterThanOrEqual(a.x, b.x, "right to left") }
+        let floorSites = r.sites.filter { $0.surfaceID == "floor" }
+        for (a, b) in zip(floorSites, floorSites.dropFirst()) { XCTAssertLessThanOrEqual(a.x - b.x, ThorMetrics.siteSpacing + 1, "no gaps wider than a blow clears") }
+    }
+
+    func testSkipsEmptySurfaces() {
+        let (w, _, _) = world(snow: 0, windowSnow: 25)
+        w.startHelper(.thor)
+        XCTAssertTrue(w.thor!.sites.allSatisfy { $0.surfaceID == "win" }, "no wasted trips to the empty floor")
     }
 
     func testFliesInFromTheRight() {
@@ -80,18 +83,17 @@ final class ThorTests: XCTestCase {
         while w.thorBlowLog.count < 2 { w.step(dt: 1.0 / 120); w.finishFrame() }
         XCTAssertLessThan(floor.field.height(atLocalX: site.x), 1.0, "cleared at the impact")
         XCTAssertEqual(floor.field.height(atLocalX: site.x - 400), 20, accuracy: 0.01, "untouched far away")
-        XCTAssertEqual(floor.field.height(atLocalX: site.x + 400), 20, accuracy: 0.01)
+        if site.x + 400 < 1990 { XCTAssertEqual(floor.field.height(atLocalX: site.x + 400), 20, accuracy: 0.01) }
     }
 
-    func testRunBreaksIceAtEverySiteAndFinishes() {
+    func testRunClearsAllTheStackedSnowAndFinishes() {
         let (w, floor, _) = world(snow: 20)
         w.startHelper(.thor)
-        let sites = w.thor!.sites
-        let t = run(w)
-        XCTAssertLessThan(t, 80)
+        let before = floor.field.volume
+        let t = run(w, maxSeconds: 150)
+        XCTAssertLessThan(t, 120, "finishes in reasonable time (\(t) s)")
         XCTAssertNil(w.thor)
-        for s in sites { XCTAssertLessThan(floor.field.height(atLocalX: s.x), 1.5, "site at \(s.x)") }
-        XCTAssertGreaterThan(floor.field.volume, 20 * 2000 * 0.4, "he breaks spots, he does not clear the whole floor")
+        XCTAssertLessThan(floor.field.volume, before * 0.05, "the hammer clears the whole floor")
     }
 
     func testWorksOnWindowTopsToo() {
