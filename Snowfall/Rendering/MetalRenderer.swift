@@ -220,8 +220,8 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
                 if let tex = propTextures {
                     enc.setRenderPipelineState(spritePipeline)
                     for p in snap.props {
-                        guard let t = tex[p.kind], p.x + p.w > Float(f.minX), p.x - p.w < Float(f.maxX),
-                              p.y + p.h > Float(f.minY), p.y - p.h < Float(f.maxY) else { continue }
+                        guard let t = tex[p.kind], p.x + abs(p.w) > Float(f.minX), p.x - abs(p.w) < Float(f.maxX),
+                              p.y + abs(p.h) > Float(f.minY), p.y - abs(p.h) < Float(f.maxY) else { continue }
                         drawSprite(t, encoder: enc, uniforms: &u, cx: p.x, cy: p.y, w: p.w, h: p.h, rot: p.rot, alpha: p.alpha)
                     }
                 }

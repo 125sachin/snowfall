@@ -150,6 +150,55 @@ final class FunHelperTests: XCTestCase {
         XCTAssertEqual(before - floor.field.volume, w.totals.lostVolume, accuracy: before * 0.03)
     }
 
+    func testBuilderWorksInStagesLikeARealSnowman() {
+        let (w, _, _) = world(floorSnow: 14, kind: .snowman)
+        w.startHelper(.snowman)
+        var phases: [BuilderRun.Phase] = []
+        for _ in 0..<(120 * 90) {
+            w.step(dt: 1.0 / 120); w.finishFrame()
+            guard let b = w.builder else { break }
+            if phases.last != b.phase { phases.append(b.phase) }
+        }
+        XCTAssertEqual(phases, [.rolling, .packMid, .liftMid, .packHead, .liftHead, .decorating, .waving, .leaving])
+    }
+
+    func testSnowmanIsStackedAndFullyDressed() {
+        let (w, _, _) = world(floorSnow: 14, kind: .snowman)
+        w.startHelper(.snowman)
+        run(w)
+        guard let m = w.snowmen.first else { return XCTFail("no snowman") }
+        var props: [RenderProp] = []
+        w.fillProps(&props)
+        let balls = props.filter { $0.kind == .snowball }.sorted { $0.y < $1.y }
+        XCTAssertEqual(balls.count, 3, "base, middle and head")
+        XCTAssertLessThan(balls[0].w, 2 * m.radius + 0.01)
+        XCTAssertGreaterThan(balls[1].y, balls[0].y + balls[0].w / 2, "the middle ball sits on the base")
+        XCTAssertGreaterThan(balls[2].y, balls[1].y, "and the head on the middle")
+        XCTAssertGreaterThan(balls[0].w, balls[1].w); XCTAssertGreaterThan(balls[1].w, balls[2].w)
+        let parts = SnowmanLayout.parts(radius: m.radius)
+        XCTAssertEqual(props.count, 3 + parts.count)
+        func kinds(_ k: PropKind) -> [RenderProp] { props.filter { $0.kind == k } }
+        XCTAssertEqual(kinds(.hat).count, 1); XCTAssertEqual(kinds(.scarf).count, 1); XCTAssertEqual(kinds(.carrot).count, 1)
+        XCTAssertEqual(kinds(.stick).count, 2); XCTAssertEqual(kinds(.coal).count, 2 + 5 + 3, "two eyes, a smile, three buttons")
+        XCTAssertGreaterThan(kinds(.hat)[0].y, balls[2].y, "the hat is on top of the head")
+        XCTAssertLessThan(kinds(.carrot)[0].x, balls[2].x, "the nose points the way he faces (left)")
+    }
+
+    func testDecorationsFlyFromTheKidsHandThenStayPut() {
+        let (w, _, _) = world(floorSnow: 14, kind: .snowman)
+        let hand = SIMD2<Float>(400, 120)
+        var mid: [RenderProp] = [], done: [RenderProp] = []
+        let part = SnowmanLayout.parts(radius: 40)[0]
+        w.snowmanProps(x: 100, baseY: 0, radius: 40, partTime: part.start + part.flight / 2, hand: hand, includeBalls: [false, false, false], out: &mid)
+        w.snowmanProps(x: 100, baseY: 0, radius: 40, partTime: SnowmanLayout.decorTime + 1, hand: hand, includeBalls: [false, false, false], out: &done)
+        let target = SIMD2<Float>(100 + part.offset.x, part.offset.y)
+        let flying = mid[0]
+        XCTAssertGreaterThan(flying.x, target.x + 20); XCTAssertLessThan(flying.x, hand.x - 20)
+        XCTAssertEqual(done[0].x, target.x, accuracy: 0.01); XCTAssertEqual(done[0].y, target.y, accuracy: 0.01)
+        XCTAssertEqual(mid.count, 1, "later parts have not been thrown yet")
+        XCTAssertEqual(done.count, SnowmanLayout.parts(radius: 40).count)
+    }
+
     func testSnowmanMeltsAwayEventually() {
         let (w, _, _) = world(floorSnow: 14, kind: .snowman)
         w.startHelper(.snowman)
