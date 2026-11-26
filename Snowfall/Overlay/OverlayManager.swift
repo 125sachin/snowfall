@@ -17,6 +17,7 @@ final class OverlayManager {
     private var fps = 60
     private var paused = false
     private var showBorders = false
+    private var contrast: Float = 0
     private var hidden = false
     /// Displays under a full-screen app: their overlay is hidden and not drawn.
     private var covered = Set<UInt32>()
@@ -47,8 +48,8 @@ final class OverlayManager {
         applyState()
     }
 
-    func setState(fps: Int, paused: Bool, showBorders: Bool) {
-        self.fps = fps; self.paused = paused; self.showBorders = showBorders
+    func setState(fps: Int, paused: Bool, showBorders: Bool, contrast: Float) {
+        self.fps = fps; self.paused = paused; self.showBorders = showBorders; self.contrast = contrast
         applyState()
     }
 
@@ -133,6 +134,7 @@ final class OverlayManager {
             o.view.releaseDrawables = false
             o.view.preferredFramesPerSecond = fps
             o.renderer.drawsDisplayBorder = showBorders
+            o.renderer.contrast = contrast
             o.window.orderFrontRegardless()
             if paused {
                 o.view.isPaused = true

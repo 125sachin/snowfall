@@ -12,6 +12,20 @@ enum TargetFrameRate: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// How the snow is drawn so it stays visible: over dark backgrounds plain white flakes are enough, over
+/// light ones they get a cool outline. `auto` follows the system appearance.
+enum BackdropMode: String, Codable, CaseIterable, Identifiable, Sendable {
+    case auto, light, dark
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .auto: "Automatic (match system)"
+        case .light: "Light backgrounds"
+        case .dark: "Dark backgrounds"
+        }
+    }
+}
+
 /// User preferences. Pure value type. Normalised values are 0...1 unless noted.
 /// Decoding tolerates missing keys (older versions) by falling back to defaults.
 struct SnowfallSettings: Codable, Equatable, Sendable {
@@ -36,6 +50,7 @@ struct SnowfallSettings: Codable, Equatable, Sendable {
     var launchAtLogin = false
     var showDiagnostics = false
     var showSurfaceDebug = false
+    var backdrop = BackdropMode.auto    // outline snow for light backgrounds
     var helper = HelperKind.jcb          // which snow helper runs
     var plowAutomatic = true             // run the helper automatically
     var plowIntervalMinutes = 3         // 1...60
@@ -68,6 +83,7 @@ struct SnowfallSettings: Codable, Equatable, Sendable {
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? d.launchAtLogin
         showDiagnostics = try c.decodeIfPresent(Bool.self, forKey: .showDiagnostics) ?? d.showDiagnostics
         showSurfaceDebug = try c.decodeIfPresent(Bool.self, forKey: .showSurfaceDebug) ?? d.showSurfaceDebug
+        backdrop = (try? c.decodeIfPresent(BackdropMode.self, forKey: .backdrop)) ?? d.backdrop
         helper = (try? c.decodeIfPresent(HelperKind.self, forKey: .helper)) ?? d.helper
         plowAutomatic = try c.decodeIfPresent(Bool.self, forKey: .plowAutomatic) ?? d.plowAutomatic
         plowIntervalMinutes = try c.decodeIfPresent(Int.self, forKey: .plowIntervalMinutes) ?? d.plowIntervalMinutes

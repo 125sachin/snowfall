@@ -39,6 +39,11 @@ struct SettingsView: View {
             LabeledSlider(title: "Fall speed", value: $store.settings.fallSpeed, range: 0.5...1.5, lowLabel: "Slow", highLabel: "Fast")
             LabeledSlider(title: "Wind strength", value: $store.settings.windStrength, lowLabel: "Calm", highLabel: "Breezy")
             LabeledSlider(title: "Opacity", value: $store.settings.particleOpacity, range: 0.3...1, lowLabel: "Faint", highLabel: "Solid")
+            Picker("Snow on", selection: $store.settings.backdrop) {
+                ForEach(BackdropMode.allCases) { Text($0.label).tag($0) }
+            }
+            Text("Light backgrounds draw flakes and piles with a cool outline so they stay visible on white windows.")
+                .font(.caption).foregroundStyle(.secondary)
             Toggle("Accumulate snow", isOn: $store.settings.accumulationEnabled)
             LabeledSlider(title: "Maximum depth", value: $store.settings.maxAccumulationDepth, lowLabel: "Shallow", highLabel: "Deep")
                 .disabled(!store.settings.accumulationEnabled)

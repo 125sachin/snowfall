@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Snow stays visible on light backgrounds: flakes and piles get a cool outline. A new "Snow on" setting
+  (Settings → Snow) follows the system appearance by default and can be forced to light or dark backgrounds.
+
 ## 0.3.0
 
 - Add four helpers: sliding penguin, snowball fight, snowman builder and Santa's sleigh flyby.

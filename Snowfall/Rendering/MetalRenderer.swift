@@ -20,6 +20,7 @@ private struct SurfaceUniforms {
     var minX: Float; var baseY: Float; var binWidth: Float
     var binCount: UInt32; var heightOffset: UInt32; var maxDepth: Float
     var cornerRadius: Float
+    var contrast: Float
 }
 
 /// Draws one display's share of the snow. Reads immutable snapshots; never touches physics.
@@ -60,6 +61,8 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
     /// Global frame of the display this renderer draws (canonical points).
     var displayFrame: CGRect
     var drawsDisplayBorder = false
+    /// 0 = plain white snow (dark backdrop), 1 = outlined snow (light backdrop).
+    var contrast: Float = 0
 
     init(view: MTKView, displayFrame: CGRect, monitor: PerformanceMonitor,
          provider: @escaping () -> RenderSnapshot) throws {
@@ -178,7 +181,7 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
             for (s, off) in visibleSurfaces {
                 var su = SurfaceUniforms(minX: s.minX, baseY: s.baseY, binWidth: s.binWidth,
                                          binCount: UInt32(s.binCount), heightOffset: UInt32(off), maxDepth: s.maxDepth,
-                                         cornerRadius: s.cornerRadius)
+                                         cornerRadius: s.cornerRadius, contrast: contrast)
                 enc.setRenderPipelineState(surfacePipeline)
                 enc.setVertexBuffer(hBuf, offset: 0, index: 0)
                 enc.setVertexBytes(&su, length: MemoryLayout<SurfaceUniforms>.stride, index: 1)
@@ -230,6 +233,8 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
             if pc > 0 {
                 enc.setRenderPipelineState(particlePipeline)
                 enc.setFragmentTexture(crystalTexture, index: 0)
+                var cv = contrast
+                enc.setFragmentBytes(&cv, length: MemoryLayout<Float>.stride, index: 0)
                 enc.setVertexBuffer(pBuf, offset: 0, index: 0)
                 enc.setVertexBytes(&u, length: MemoryLayout<ViewUniforms>.stride, index: 1)
                 enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4, instanceCount: pc)

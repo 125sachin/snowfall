@@ -18,6 +18,20 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(s.version, SnowfallSettings.currentVersion)
     }
 
+    func testBackdropDefaultsToAutomatic() {
+        XCTAssertEqual(SnowfallSettings.default.backdrop, .auto)
+    }
+
+    func testBackdropSurvivesRoundTripAndOldSettingsFallBack() throws {
+        var s = SnowfallSettings.default
+        s.backdrop = .light
+        let data = try JSONEncoder().encode(s)
+        XCTAssertEqual(try JSONDecoder().decode(SnowfallSettings.self, from: data).backdrop, .light)
+        // Settings saved by an older version have no backdrop key; an unknown value is also tolerated.
+        XCTAssertEqual(try JSONDecoder().decode(SnowfallSettings.self, from: Data("{}".utf8)).backdrop, .auto)
+        XCTAssertEqual(try JSONDecoder().decode(SnowfallSettings.self, from: Data(#"{"backdrop":"neon"}"#.utf8)).backdrop, .auto)
+    }
+
     func testValidationClamps() {
         var s = SnowfallSettings()
         s.particleDensity = 7

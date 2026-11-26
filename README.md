@@ -13,6 +13,8 @@ characters to clear it away again.
 - **Falling snow** with crystal-shaped flakes, wind, and an adjustable amount and speed.
 - **Snow piles up** on the bottom of the screen and on the top edge of the front-most windows, and slides off or is
   carried along when you move a window. Window corners are rounded, so snow follows the curve.
+- **Readable on light and dark backgrounds:** on light backgrounds the flakes and piles get a cool outline so they stay
+  visible. It follows the system appearance, or you can force it in Settings → Snow.
 - **Mouse interaction:** move the pointer through the snow and it scatters.
 - **Snow helpers** that clear the snow, chosen from the menu or in Settings (or "Surprise me"):
 
